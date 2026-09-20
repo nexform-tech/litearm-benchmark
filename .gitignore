@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+# 基准运行产物（原始数据 + 报告）—— 数据很大，按需单独归档，不进主仓
+docs/bench_*/

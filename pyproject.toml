@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "litearm-benchmark"
+version = "0.1.0"
+description = "LiteArm 机械臂综合性能基准 —— 位置/速度/力矩/抖动/笛卡尔/同步/热/安全分维度打分与总分"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "luochun" }]
+keywords = ["robotics", "robot-arm", "litearm", "benchmark", "metrology"]
+dependencies = [
+    # ⚠ 兄弟工程声明本家族依赖的先例是「名称 + `>=` 下限」，**不用 path/URL/editable-spec**
+    #   （见 `litearm-server/pyproject.toml`）。版本下限与 litearm-core 的
+    #   `pyproject.toml` / `__init__.py` 对齐。
+    "litearm-core>=2.1.0",
+    # numpy 只用于**分析**（差分/谱/统计/插值）。litearm-core 刻意不依赖它 —— 那是 SDK 的
+    # 取舍（重活全在固件里）；本工程是 PC 侧离线分析器，向量化是刚需，显式声明别靠传递依赖捡。
+    "numpy>=1.21",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+litearm-bench = "litearm_benchmark.cli:main"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+litearm_benchmark = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-v"
