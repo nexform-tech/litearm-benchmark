@@ -341,13 +341,43 @@ class Executor:
             self._hold(a.rest_s)
 
     def _watchdog(self, a: Action) -> None:
-        """看门狗时延：**停止发命令**，等 `flags & 0x2`（`WD_TRIPPED`）置位。
+        """命令看门狗的跳闸时延。⚠ **常规状态下本测法在原理上观测不到它。**
 
-        ⛔ 判据必须用 **bit 0x2**。core 把这个 bit 解成 `WD_TRIPPED`，
-        按固件里的拼法去搜 `WATCHDOG` 字符串**永远搜不到**（本项目的一起假警报）。
+        固件 `control_loop.c:717` 原文：「`watchdog_kick()` **只在 `mode==MOVE_J` 时
+        自动调用**」。而 `movej` 到位后固件**停在 MOVE_J 持位、且每拍自 kick**
+        （`watchdog.c` 的 `[B]` 注释：「move_j 受控静止保持持续 kick」）。
+        ⇒ 在 MOVE_J 下，"停止发命令"**永远不会**触发看门狗。
+
+        ⛔⛔ **绝不去人为诱发它。** `control_loop.c:1787` 写明触发后的处置是
+        「fail-soft 持位（**降刚度、τ=0、允许下垂**）」—— 那是**掉力矩**。
+        本机 J4 距上软限只有约 0.01 rad，一次下垂就可能把它推出**锁存线**，
+        而那个锁存 `reset` 清不掉（本项目记录过：J4 锁死只能人工推回去）。
+        **为测一个时延去冒这个险，不值得。**
+
+        ⇒ 所以这里**如实报未实测并写明理由** —— 而不是报一个读起来像"通过"的
+        「未观察到跳闸」。⚠ 「测不到」与「测出来很好」的区分，是本工程的立身之本。
+
+        ⛔ 判据本身必须用 **bit 0x2**（core 解成 `WD_TRIPPED`）；
+        按固件拼法搜 `WATCHDOG` 字符串**永远搜不到**（历史事故）。
         """
         WD = 0x2
         t0 = time.monotonic()
+        st = self.arm.get_state(refresh=True).value
+        mode = str(getattr(st, "mode_name", "")) if st is not None else ""
+
+        if mode == "MOVE_J":
+            self.trace.meta["watchdog_latency_s"] = None
+            self.trace.meta["watchdog_note"] = (
+                f"模式为 `{mode}` ⇒ 固件每拍自 kick（`control_loop.c:717`）"
+                f"⇒ 静止等待法**原理上观测不到**跳闸；且触发 = τ=0 下垂，不去诱发")
+            self._log(f"  看门狗时延: **未实测**（模式 {mode} 下固件每拍自 kick ⇒ "
+                      f"本测法观测不到；触发它要掉力矩，不诱发）")
+            self.segments.append(Segment(label=a.label or "watchdog", kind="hold",
+                                         t0=t0, t1=time.monotonic(), target=None,
+                                         extra={"mode": mode, "latency": None,
+                                                "why": "MOVE_J 自 kick，观测不到"}))
+            return
+
         seen = None
         while time.monotonic() - t0 < 5.0:
             st = self.arm.get_state(refresh=True).value
@@ -356,31 +386,67 @@ class Executor:
                 break
             time.sleep(0.02)
         self.trace.meta["watchdog_latency_s"] = seen
-        self._log(f"  看门狗时延: {'未观察到跳闸' if seen is None else f'{seen:.3f}s'}")
+        if seen is None:
+            self.trace.meta["watchdog_note"] = (
+                f"模式 `{mode}`（非 MOVE_J）下等了 5 s 仍未跳闸 ⇒ 可能是别的原因"
+                f"在 kick，**不是**「看门狗正常」的证明")
+        self._log(f"  看门狗时延: {'未观察到跳闸' if seen is None else f'{seen:.3f}s'}"
+                  f"（模式 {mode}）")
         self.segments.append(Segment(label=a.label or "watchdog", kind="hold",
                                      t0=t0, t1=time.monotonic(), target=None,
-                                     extra={"latency": seen}))
-        time.sleep(0.5)
+                                     extra={"mode": mode, "latency": seen}))
+        self._hold(0.5)
 
     def _kin_bench(self, a: Action) -> None:
+        """固件自检 `0x49`。⚠ 回执是**连续两帧**（耗时帧 + LINK 帧），core 两帧都收。
+
+        ⛔ 旧实现有两处错，合起来让「固件计算性能」这一维**恒判未实测**：
+
+        1. 读的是 `Msg` **信封**而不是 `.value`。core 把 11 个读型入口包进了信封
+           （2.0.0 的破坏性变更），本工程其它地方都写了 `.value`，**只有这里漏了**
+           ⇒ `timings` 恒为空 ⇒ 只报出 `{'_frames': 1}`。
+        2. 拿 `timings["LOOP1"]` 当「控制拍峰值」。`LOOP1` 是自检里**禁中断单次**测的
+           控制步计算量（`kin_runner.c:415-418`），而"控制拍峰值"是固件另一处的
+           `loop_k = g_arm.loop_max_cyc/1000`（`litearm.h:307` 注释"历史最长单拍耗时"）。
+           真机实测两者差 **10×**：`LOOP1` 20.06 kcycle vs `loop_k` **199** kcycle。
+           ⇒ 指标名就叫 `loop_max_kcycle`，取的是**后者**；前者只当旁证记下来。
+        """
         try:
-            res = self.arm.diag.kin_bench()
-        except Exception as exc:                          # noqa: BLE001
+            res = self.arm.diag.kin_bench().value          # ⚠ 信封要拆
+        except Exception as exc:                           # noqa: BLE001
             self._log(f"  ⚠ 固件自检失败：{exc!r}")
             return
-        d = {}
-        timings = getattr(res, "timings", {}) or {}
-        loop = timings.get("LOOP1")
-        if loop:
-            d["loop_max_kcycle"] = float(max(loop)) / 1000.0
-        d["overruns"] = getattr(res, "loop_overruns", None)
-        d["_frames"] = 2 if timings else 1
+        if res is None:
+            self._log("  ⚠ 固件自检没取到值")
+            return
+
+        timings = dict(getattr(res, "timings", {}) or {})
+        link = dict(getattr(res, "link", {}) or {})
+        d: Dict[str, object] = {"_frames": 2 if link else 1,
+                                "timing_blocks": sorted(timings)}
+        if timings.get("LOOP1"):
+            # 旁证：**禁中断单次**测的控制步计算量（≠ 真实整拍耗时）
+            d["loop1_isolated_kcycle"] = float(timings["LOOP1"][0]) / 1000.0
+
+        # ⚠⚠ **LINK 帧没到 ⇒ 下面一个数都不许写。**
+        #   `link.get("loop_k", 0)` 那类出口会让「读不到」与「真的是 0」长得一模一样
+        #   （本项目记录过这次教训：把"计数器恒 0"读成了"没出错"）。
+        #   写不写，由「**键到齐没有**」决定，不由"能不能取到一个默认值"决定。
+        if link:
+            d["loop_max_kcycle"] = float(res.loop_max_kcycle)
+            d["overruns"] = int(res.loop_overruns)
+            self.trace.meta["crc_errors"] = int(res.crc_errors)
+            self.trace.meta["reply_dropped"] = int(res.reply_dropped)
+            self.trace.meta["can_tx_fail"] = int(res.can_tx_fail)
+            # `[N-12 fix]` 的两个 RX FIFO 溢出计数 —— 溢出 = **静默丢反馈**，
+            # 可能整臂 EMERGENCY。键名带数字，解析器从前吃不下。
+            self.trace.meta["rx_fifo_lost"] = int(link.get("rxl0", 0)) + int(link.get("rxl1", 0))
+        else:
+            self._log("  ⚠ 固件自检只回了 1 帧（LINK 段缺失）"
+                      "⇒ 控制拍峰值与链路计数一律判**未实测**（不填 0）")
+
         self.trace.meta["kin_bench"] = {k: v for k, v in d.items() if v is not None}
-        for attr in ("crc_errors", "reply_dropped", "loop_overruns"):
-            v = getattr(res, attr, None)
-            if v is not None:
-                self.trace.meta[attr] = v
-        self._log(f"  固件自检: {self.trace.meta.get('kin_bench')}")
+        self._log(f"  固件自检: {self.trace.meta['kin_bench']}")
 
     def _gcheck(self, a: Action) -> None:
         """静态 G 对照：在每个静止位形上取 `τ_实测` 与 `model.get_gravity(q)` 比。
@@ -390,7 +456,7 @@ class Executor:
         """
         from ..metrics.registry import M_TAU_G_MATCH  # noqa: F401
         poses = a.extra.get("poses") or ["bench", "bench_j2hi", "bench_j2lo"]
-        errs = []
+        samples = []
         for key in poses:
             tgt = self._pose(key)
             self._gate(tgt, f"gcheck:{key}")
@@ -400,6 +466,8 @@ class Executor:
                 self._log(f"  ⚠ gcheck {key} 运动失败：{exc!r}")
                 continue
             if not self._at_rest():
+                self._log(f"  ⚠ gcheck {key}: 没等到稳态 ⇒ 丢弃该位形"
+                          f"（本项目记录过：用瞬态读数会把偏差高估近一倍）")
                 continue
             st = self.arm.get_state(refresh=True).value
             q = np.asarray([j.q for j in st.joints], float)
@@ -411,14 +479,19 @@ class Executor:
             if gm is None:
                 return
             gm = np.asarray(gm, float)
-            n = 0
-            for i in range(len(q)):
-                if abs(tau[i]) > 0.3:                     # 只在有力矩的轴上比，免得除以噪声
-                    errs.append(abs(tau[i] - gm[i]) / abs(tau[i]))
-                    n += 1
-            self._log(f"  gcheck {key}: {n} 轴参与")
-        if errs:
-            self.trace.meta["g_match_pct"] = float(np.median(errs) * 100.0)
+            # ⚠ **这里只存原始样本，不做判据** —— 判据要拿 `fc0/fc1`（库仑摩擦）来筛
+            #   "模型预测得出来的轴"，而那两个参数要等 `snapshot_identity` 才读回来
+            #   （在本动作之后）⇒ 判据放在分析层（`_torque`），那里 identity 齐了。
+            #   ⛔ 旧实现就地按 `|τ| > 0.3` 挑轴、取中位数，把两种**完全不同的工况**
+            #   混在一起：零位下 J1/J3 的 G 模型本来就是 0，而实测 τ≈0.4 N·m
+            #   （**摩擦撑的**）⇒ 比值算出 100%，把整条指标抬到 35%（历史分布中位 6.3%）。
+            samples.append({"pose": key,
+                            "q": [float(v) for v in q],
+                            "tau": [float(v) for v in tau],
+                            "g": [float(v) for v in gm]})
+            self._log(f"  gcheck {key}: 采到 {len(q)} 轴读数（判据在分析层按 fc0/fc1 筛）")
+        if samples:
+            self.trace.meta["g_samples"] = samples
 
     def _manual(self, a: Action) -> None:
         if not self.interactive:

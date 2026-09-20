@@ -406,7 +406,13 @@ def _smoothness(r: RawResult, trace, segs, identity, *, excited: bool = True) ->
             ts = float(np.std(taul[seg_i[0]:seg_i[1] + 1, j], ddof=1))
             lsb = I.TAU_LSB_NM.get(j + 1)
             tau_sig.append(S.excess_over_floor(ts, S.quant_floor_std(lsb.value)) if lsb else ts)
-            dv = np.abs(np.diff(v))
+            # ⚠⚠ `|Δv|` 必须在**巡航段之内**取。旧实现取的是**整个 chunk**，而一个动作
+            #    chunk 里大部分拍是静止段（那一段 Δv 恒 0）⇒ 中位数被它们拉到 0
+            #   ⇒ `med > 0` **恒假** ⇒ 这条指标在真机上**从来出不了数**
+            #   （真机实测：整段 med|Δv| ≡ 0，而巡航段内是 8.0e-3）。
+            #   ⚠ 但即使修好，**参考在巡航段严格线性**的那些段（实测 0.5 档就是）
+            #   分母仍恰为 0 —— 那是**无定义**，不是"很平滑"，故那段不计、并如实说明。
+            dv = np.abs(np.diff(v[seg_i[0]:seg_i[1] + 1]))
             med = float(np.median(dv))
             if med > 0:
                 jerk_spikes.append(float(dv.max() / med))
@@ -432,9 +438,14 @@ def _smoothness(r: RawResult, trace, segs, identity, *, excited: bool = True) ->
 
     if jerk_spikes:
         r.set("smooth.jerk_spike_ratio", float(np.median(jerk_spikes)),
-              evidence="巡航段 max|Δv| / median|Δv| 的中位数。**单流指标**，无跨流对齐伪影")
+              evidence=f"**巡航段之内** `max|Δv| / median|Δv|` 的中位数（{len(jerk_spikes)} 段可用）；"
+                       f"v 用位置差分；**单流指标**、无跨流对齐伪影。"
+                       f"⚠ 只在参考不平直的段上可测 —— 巡航段内 `median|Δv|` 恰为 0 "
+                       f"（参考严格线性）的段**分母无定义**，已剔除")
     else:
-        r.skip("smooth.jerk_spike_ratio", "没有可用的巡航段；或巡航段太抖导致 median|Δv|=0")
+        r.skip("smooth.jerk_spike_ratio",
+               "所有巡航段内 `median|Δv|` 都恰为 0 ⇒ 分母无定义（**不是「很平滑」**）—— "
+               "参考在巡航段严格线性时分不出尖峰，这是判据本身的分辨力边界")
 
 
 # ================================ E. 力矩 =================================== #
@@ -453,10 +464,45 @@ def _torque(r: RawResult, trace, segs, identity) -> None:
         r.skip("torque.peak_ratio", "读不到 tau_max ⇒ 无法归一化")
         r.skip("torque.saturation_frac", "同上")
 
-    g = identity.get("g_match_pct")
-    if g is not None:
-        r.set("torque.g_match_pct", float(g),
-              evidence="稳态多姿态下 |τ_实测 − G(q)| / |τ_实测|，由 suite 在静止段采（**必须用稳态读数**）")
+    # ⚠⚠ 判据：**只在"模型预测得出来"的轴上比**。
+    #
+    # 真机实测（2026-09-20，零位）：J1 `τ=+0.4396 / G=+0.0000`、J3 `τ=+0.3624 / G=−0.0002`
+    # —— 偏差算出来 **100%**。但**那不是模型误差**：那两根轴在零位与重力同向，G 本来就
+    # 是 0，而实测 τ 是**库仑摩擦撑着静平衡**的力矩。
+    # 旧实现只按 `|τ| > 0.3` 挑轴，把「G 主导」与「摩擦主导」两种**完全不同的工况**
+    # 混在一起取中位数 ⇒ 整条指标被从历史分布的中位 **6.3%** 抬到 **35%**
+    # （锚点上界 50% ⇒ 判约 20 分）。
+    #
+    # ⇒ 门：`|G(q_i)| ≥ max(|fc0_i|,|fc1_i|)`（该轴的库仑摩擦）**且** `|τ_i| > 0.3`
+    #   —— 前者保证重力项在实测力矩里是**主导**的，这个比值才有意义。
+    #
+    # ⚠ 样本来自 `trace.meta['g_samples']`（suite 在**稳态**采，瞬态读数会把偏差高估
+    #   近一倍 —— 本项目踩过），判据在这里做是因为 `fc0/fc1` 要等 identity 快照。
+    samples = trace.meta.get("g_samples")
+    fc0, fc1 = identity.get("fc0"), identity.get("fc1")
+    if samples and fc0 and fc1:
+        errs, n_skip = [], 0
+        for smp in samples:
+            g = np.asarray(smp.get("g") or [], float)
+            t = np.asarray(smp.get("tau") or [], float)
+            for i in range(min(len(g), len(t), len(fc0), len(fc1))):
+                fric = max(abs(float(fc0[i])), abs(float(fc1[i])))
+                if abs(g[i]) < fric or abs(t[i]) <= 0.3:
+                    n_skip += 1
+                    continue
+                errs.append(abs(t[i] - g[i]) / abs(t[i]))
+        if errs:
+            r.set("torque.g_match_pct", float(np.median(errs)) * 100.0,
+                  evidence=f"稳态位形下 `|τ−G(q)|/|τ|` 的中位数（**{len(errs)}** 个轴-位形读数）；"
+                           f"**只在 `|G| ≥ 该轴库仑摩擦` 的轴上比** —— 另 {n_skip} 个读数里"
+                           f"重力项不主导（零位时 G 本就是 0、实测 τ 由摩擦撑着），"
+                           f"比值无意义、已剔除")
+        else:
+            r.skip("torque.g_match_pct",
+                   f"{len(samples)} 个位形共 {n_skip} 个读数**没有一个**满足"
+                   f"「重力项主导」（`|G| ≥ 库仑摩擦`）⇒ 这些位形判不了模型可信度")
+    elif samples:
+        r.skip("torque.g_match_pct", "读不到 `fc0/fc1`（库仑摩擦）⇒ 无法判「重力项是否主导」")
     else:
         r.skip("torque.g_match_pct", "suite 未采到静态 G 对照（需动力学模型可用且已采静止段）")
 
@@ -571,6 +617,23 @@ def _cartesian(r: RawResult, trace, segs) -> None:
 
 # =============================== G. 同步 =================================== #
 def _sync(r: RawResult, trace, segs) -> None:
+    """多轴同步。⛔ **本判据测的是"指令"不是"臂"，而指令级同步是构造保证的。**
+
+    `movej_sync` 的实现是**一条标量 `s: 0→1` 同时驱动全轴** —— core 的 `movej_sync`
+    文档原文：「保证是**参考级**同步（参考同拍到达）；**物理跟踪差异仍在**」。
+    ⇒ 各轴**参考**速度必然在同一拍归零 ⇒ 下面这个"停止时刻极差"**恒为 0**。
+
+    真机实测：`sync.stop_spread_ms = 0.0`（恰好 0）⇒ **恒判 100 分**。
+
+    ⛔ 一个**构造即为真**的判据没有判别力 —— 这正是本项目反复栽过的那一类
+    （"验收不许只靠『定义即真』的判据"）。⇒ 如实报**未实测**，并把观测到的
+    **参考级**极差写进理由：它证明「固件同步特性在参考级确实生效」，
+    但**不能**当"臂同步得好"的分数。
+
+    ⚠ 为什么不改去测物理同步：唯一含**实测**位置的是 100 Hz 状态帧（**10ms 分辨率**），
+    而各轴物理停止时刻的分散在 ms 量级 ⇒ **低于分辨率**。要量它需要更快的实测流，
+    本工程的仪表里没有。
+    """
     spreads = []
     for s in segs:
         if s.kind != "movej_sync" or s.chunk is None:
@@ -590,11 +653,14 @@ def _sync(r: RawResult, trace, segs) -> None:
                 stops.append(tl[w[1]])
         if len(stops) >= 2:
             spreads.append((max(stops) - min(stops)) * 1000.0)
-    if spreads:
-        r.set("sync.stop_spread_ms", float(np.median(spreads)),
-              evidence="各轴**速度归零时刻**的极差（判据不是「全轴同乘一个速度系数」）")
-    else:
-        r.skip("sync.stop_spread_ms", "本档未跑 movej_sync（或运动轴少于 2 个）")
+
+    ref = (f"**参考级**极差实测 {float(np.median(spreads)):.3f} ms（{len(spreads)} 段）"
+           if spreads else "本档未跑 movej_sync")
+    r.skip("sync.stop_spread_ms",
+           f"⛔ 判据测的是**指令**：`movej_sync` 由一条标量 s 驱动全轴 ⇒ 参考同拍到达是"
+           f"**构造保证**（{ref}）⇒ 恒 0、**无判别力**，不给分。"
+           f"物理同步测不了：唯一含实测位置的是 100Hz 流（10ms 分辨率），"
+           f"低于各轴停止分散的量级")
 
 
 # =============================== H. 热 ===================================== #
@@ -646,12 +712,17 @@ def _safety(r: RawResult, trace, identity) -> None:
               evidence="停止发命令 → 观察到 `flags & 0x2`（core 解成 **WD_TRIPPED**）置位的时延。"
                        "⛔ 按固件拼法搜 `WATCHDOG` **永远搜不到**（历史事故）")
     else:
-        r.skip("safe.watchdog_latency_s", "本档未做看门狗断连试验")
+        # ⚠ 这里**必须把理由带出来**。常规档位跑完就是"未实测"，而
+        #   "未观察到跳闸"读起来像"通过了" —— 那正是「测不到」被当成「测出来很好」。
+        why = trace.meta.get("watchdog_note") or "本档未做看门狗断连试验"
+        r.skip("safe.watchdog_latency_s", why)
 
     marg = trace.meta.get("min_margin_rad")
     if marg is not None:
         r.set("safe.margin_rad", float(marg),
-              evidence="全程最小距软限裕度（逐状态帧逐轴取 min）")
+              evidence=f"全程最小**距锁存线**裕度（= `软限 ± {I.POS_LATCH_BAND.value}`，"
+                       f"逐状态帧逐轴取 min）。⚠ 不是「距软限」——固件锁存判定在包络上"
+                       f"（`safety_check.c:165`）")
     else:
         r.skip("safe.margin_rad", "未记录限位裕度")
 
@@ -662,18 +733,40 @@ def _safety(r: RawResult, trace, identity) -> None:
 
 # =========================== K. 固件计算性能 ================================ #
 def _compute(r: RawResult, bench: Optional[dict]) -> None:
+    """固件计算性能。⚠ 自检里有**两个不同的量**，真机实测它们差 **10×**，必须分清：
+
+    * `loop_max_kcycle` ← 固件 `loop_k = g_arm.loop_max_cyc / 1000`
+      （`litearm.h:307` 注释「历史最长单拍耗时」）—— **真实整拍的峰值**，指标取它；
+    * `LOOP1` ← 自检里**禁中断单次**测的控制步计算量（`kin_runner.c:415-418`）
+      —— 只当旁证、不进分：它把中断全关了，恒**小于**真实整拍
+      （真机：`LOOP1` 20.06 kcycle vs `loop_k` **199** kcycle）。
+    """
+    budget = 480000.0 / 300.0                      # 300Hz @480MHz ⇒ 1600 kcycle
     if not bench:
         r.skip("compute.loop_max_kcycle", "本档未跑固件自检 0x49")
         r.skip("compute.overruns", "同上")
         return
-    r.set("compute.loop_max_kcycle", bench.get("loop_max_kcycle"),
-          evidence="固件自检 `LOOP1` 段的 DWT cycle 峰值 / 1000。"
-                   f"控制拍预算 = 480MHz/300Hz = {480000/300:.0f} kcycle")
-    r.set("compute.overruns", bench.get("overruns"),
-          evidence="超预算拍数（期望恒 0）")
+
+    if bench.get("loop_max_kcycle") is None:
+        r.skip("compute.loop_max_kcycle",
+               "自检只回了 1 帧（LINK 段缺失）⇒ 控制拍峰值**读不到**，判未实测")
+    else:
+        iso = bench.get("loop1_isolated_kcycle")
+        r.set("compute.loop_max_kcycle", bench["loop_max_kcycle"],
+              evidence=f"固件 `loop_k`（历史最长单拍耗时 / 1000）；"
+                       f"控制拍预算 = 480MHz/300Hz = {budget:.0f} kcycle"
+                       + (f"；旁证 `LOOP1`（禁中断单次）={iso:.1f} kcycle" if iso else ""))
+
+    if bench.get("overruns") is None:
+        r.skip("compute.overruns", "同上（LINK 段缺失）")
+    else:
+        r.set("compute.overruns", bench["overruns"],
+              evidence="超预算拍数（期望恒 0）；非 0 即控制周期被打破")
+
     if bench.get("_frames", 0) < 2:
-        r.notes["compute._frames"] = ("⚠ 自检只收到 1 帧 ⇒ LINK 便捷出口会**静默返回 0**，"
-                                      "上面的数可能不全")
+        r.notes["compute._frames"] = (
+            "⚠ 自检只收到 1 帧（LINK 段缺失）⇒ 控制拍峰值与链路计数**全部未实测** —— "
+            "这是「要不要填 0」的问题，答案是**不填**（填 0 会把「读不到」伪装成「很好」）")
 
 
 # =============================== L. 链路 =================================== #
@@ -681,15 +774,30 @@ def _link(r: RawResult, trace, identity) -> None:
     if len(trace.t_status) > 10:
         dur = float(trace.t_status[-1] - trace.t_status[0])
         r.set("link.status_hz", (len(trace.t_status) - 1) / dur if dur > 0 else None,
-              evidence="按到达时间戳自算的状态帧率（协议固定 100Hz）")
+              evidence=f"按到达时间戳自算的状态帧率（协议固定 {I.STATUS_HZ.value:.0f}Hz）")
     else:
         r.skip("link.status_hz", "状态帧太少")
-    for key, meta in (("link.crc_errors", "crc_errors"), ("link.foreign_frames", "foreign_frames")):
+
+    # ⚠⚠ **两个计数的来源不同，别写成一样**（旧实现把两者都注成"core 的累计计数"）：
+    #    * `crc_errors` 是**固件**的 —— "上位机发出的帧被固件丢弃"；
+    #    * `foreign_frames` / `unexpected_frames` 是 **core** 的 —— 读循环丢掉的帧。
+    #    来源写错会让人去错的地方排查。
+    others = []
+    for k, nm in (("reply_dropped", "固件应答 FIFO 队满丢弃"),
+                  ("can_tx_fail", "CAN 发送失败"),
+                  ("rx_fifo_lost", "RX FIFO 溢出（= 静默丢反馈，可能整臂 EMERGENCY）"),
+                  ("unexpected_frames", "core 未识别 id 的帧")):
+        if trace.meta.get(k) is not None:
+            others.append(f"{nm} {trace.meta[k]}")
+    tail = ("。本次会话的其余链路计数：" + "、".join(others)) if others else ""
+
+    for key, meta, src in (("link.crc_errors", "crc_errors", "**固件**"),
+                           ("link.foreign_frames", "foreign_frames", "**core**")):
         v = trace.meta.get(meta)
         if v is not None:
-            r.set(key, float(v), evidence=f"core 的累计计数 `{meta}`（期望恒 0）")
+            r.set(key, float(v), evidence=f"{src}的累计计数 `{meta}`（期望恒 0）" + tail)
         else:
-            r.skip(key, "未记录该计数")
+            r.skip(key, f"未记录该计数（{src}侧没取到 ⇒ 判未实测，不填 0）")
 
 
 # --------------------------------------------------------------------------- #

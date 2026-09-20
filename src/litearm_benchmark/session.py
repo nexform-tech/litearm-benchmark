@@ -116,18 +116,19 @@ class BenchSession:
 
         # 事后统一补算「全程」类量（它们要等 trace 收全）
         _post_fill(cap.trace, self.limits)
+        _link_counters(cap.trace, self.arm)
 
         identity = snapshot_identity(self.arm)
         raw = analyze(cap.trace, segs, identity,
                       bench=cap.trace.meta.get("kin_bench"))
-        # `analyze` 是从 trace 算的；把 suite 在运行期直接量到的量合并进来
-        for k in ("g_match_pct", "watchdog_latency_s", "min_margin_rad",
-                  "pos_violation_events", "static_drift_mrad"):
-            if k in cap.trace.meta and k.replace("g_match_pct", "torque.g_match_pct") not in raw.values:
-                key = {"g_match_pct": "torque.g_match_pct"}.get(k, k)
-                if raw.values.get(key) is None and cap.trace.meta[k] is not None:
-                    raw.values[key] = float(cap.trace.meta[k])
-                    raw.evidence.setdefault(key, f"运行期直接量到（trace.meta['{k}']）")
+        # ⚠ 这里**曾经**有一段"把 trace.meta 合并进 raw.values"的循环，已删：
+        #   它的守卫是 `... and <目标键> not in raw.values`，而 `skip()` 会把键
+        #   **以 None 写进** `raw.values` ⇒ `not in` **恒假** ⇒ 那一支永远不执行。
+        #   它想服务的 5 个键里，4 个（`min_margin_rad` / `pos_violation_events` /
+        #   `static_drift_mrad` / `watchdog_latency_s`）本来就是各分析函数**自己读
+        #   `trace.meta`** 的（那段循环对它们是死代码）；唯一真需要它的
+        #   `g_match_pct` 于是**从来没被合并过**（真机每档都判未实测）。
+        #   ⇒ 统一改成分析侧直接读 meta，一处真相，不再有第二遍合并。
         card = score(raw, identity=identity, simulated=bool(self.dry_run))
 
         res = RunResult(card=card, raw=raw, segments=segs, trace=cap.trace,
@@ -163,6 +164,30 @@ def _post_fill(trace, limits) -> None:
             cur = (f >> b) & 1
             ev += int(np.sum((cur[1:] == 1) & (cur[:-1] == 0)))
         trace.meta["pos_violation_events"] = ev
+
+
+def _link_counters(trace, arm) -> None:
+    """core 侧的丢帧计数（**会话结束时的累计快照**）。
+
+    ⚠ 这两个是 **core 的**计数器（挂在 `_Ack` 上），**不是固件的** —— 所以它们
+    跟 `kin_bench` 没有任何关系。旧实现只在 `_kin_bench` 里找它们，
+    于是 `link.foreign_frames` **永远取不到**（那一项恒判未实测）。
+
+    * `foreign_frames` —— "认识、但不是本命令要的那条"被某个读循环丢掉的帧数
+      （八处读循环各计各的）；
+    * `unexpected_frames` —— 未识别 id 的帧数。
+
+    两者期望恒 0。⚠ 本项目记录过一次真实事故：真机把多帧合成一帧，于是
+    "计数器恒 0" 被读成了 "没出错" —— 所以这里**只在真拿到属性时才写**，
+    拿不到就让它保持未实测，而不是填 0。
+    """
+    a = getattr(arm, "_a", None)
+    if a is None:
+        return
+    for key in ("foreign_frames", "unexpected_frames"):
+        v = getattr(a, key, None)
+        if v is not None:
+            trace.meta[key] = int(v)
 
 
 def _seg_dump(s: Segment) -> Dict[str, object]:
