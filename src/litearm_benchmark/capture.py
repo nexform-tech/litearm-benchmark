@@ -158,14 +158,30 @@ class DualCapture:
 
     # ------------------------------------------------------------------ #
     def _flush(self) -> None:
-        """把挂钩期收下的状态帧转成数组。多次调用是幂等的（只搬新收的）。"""
+        """把挂钩期收下的状态帧转成数组。多次调用是幂等的（只搬新收的）。
+
+        ⚠⚠ **时间轴必须是真实的 `time.monotonic()`，绝不许"接在已有段之后"重排。**
+        2026-09-20 真机首次跑 quick 时这里正是这么错的：旧实现把每次 flush 的
+        `new_t` 平移成"紧接上一段"，于是**两次 flush 之间的真实间隔被抹掉**，
+        `t_status` 成了一条被人为压缩的假时间轴（实测跨度 40.4 s，而运行历时 51 s）。
+
+        后果**不是"精度差一点"而是整体相位错位**：`Segment.t0/t1` 来自
+        `time.monotonic()`，而分析按 `t >= s.t1 - 0.6` 在 `t_status` 上选窗口 ——
+        两个不同源的时间直接比大小 ⇒ 每个静止段选到的都是**别的动作**的片段，
+        静差被算成 **798.769 mrad**（≈ 相邻两个目标之差 0.8 rad），
+        而"重复定位精度"也变成跨目标的极差。
+
+        ⚠ 为什么当时没发现：跨流自证量把 `track.*` **整组**判成不可信并拒绝出分 ——
+        那条规矩挡住了跨流，但 `static.*` 是**单流**指标，没有自证量挡它。
+        """
         if not self._rec:
             return
-        t = self.trace.t_status
-        off = float(t[-1] - t[0]) if len(t) else 0.0
         new_t = np.asarray(self._rec_t, float)
-        if len(t):
-            new_t = new_t - new_t[0] + t[-1] + 1e-6       # 接在已有段之后，保持单调
+        t = self.trace.t_status
+        if len(t) and len(new_t) and new_t[0] < t[-1]:
+            raise RuntimeError(                       # 真实时钟不可能倒退 ⇒ 采集层坏了
+                f"状态帧时间轴倒退：{new_t[0]:.6f} < 上一段末尾 {t[-1]:.6f} "
+                f"⇒ 时间源不是单调时钟，分析结果不可信")
         self.trace.t_status = np.concatenate([t, new_t]) if len(t) else new_t
         st = self._rec
         cat = lambda f: np.asarray([f(s) for s in st])     # noqa: E731
