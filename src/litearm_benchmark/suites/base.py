@@ -17,7 +17,7 @@ from typing import Callable, Dict, List, Optional, Sequence
 import numpy as np
 
 from .. import instruments as I
-from ..metrics.analysis import Segment
+from ..metrics.analysis import MIN_EXCITATION_RAD, Segment
 
 #: 需人工介入的动作标记 —— 无人值守档位里出现就要拒绝运行。
 MANUAL = "manual"
@@ -44,6 +44,13 @@ class Action:
     kind: str
     label: str = ""
     target: Optional[str] = None       # POSES 的键名（关节类动作）
+    #: 每轮的**起点**位形。给了它，`reps` 的每一轮都先走到 `via`、再落到 `target`。
+    #:
+    #: ⚠ **没有它，`reps` 是假的**：第 2..N 轮的目标与上一轮落点**完全一样**，臂一步都不动，
+    #: 那一轮的"落点"只是上一轮的复制 —— 重复性变成测传感器噪声、跟踪段变成空动作。
+    #: 2026-09-20 真机首跑实测：`小位移@0.3` 三次重复的段长全是 0.02 s（`gcheck` 恰好
+    #: 已把臂停在 `bench_j2lo`），而 `static.repeat_ptp_mrad` 拿着那 0.76 mrad 判了 91 分。
+    via: Optional[str] = None
     speed: float = 0.4
     n_ticks: int = 900                 # 300Hz 日志窗口拍数（≤2400）
     reps: int = 1
@@ -80,18 +87,31 @@ class Executor:
         return list(POSES[key])
 
     def _gate(self, target: Sequence[float], label: str) -> None:
-        """每一次动臂前的**限位闸** —— 裕度不足直接抛，不给"就这一次"留口子。"""
-        from ..safety import SafetyAbort
+        """每一次动臂前的**限位闸** —— 裕度不足直接抛，不给"就这一次"留口子。
+
+        ⚠ 裕度一律取**距锁存线**（`软限 ± POS_LATCH_BAND`），不取距软限 ——
+        见 :func:`litearm_benchmark.instruments.latch_margin_rad`。
+        另外**目标必须在软限内**：越限时固件会把 `q_ref` 钳回，动作等于白做。
+        """
+        from ..safety import MIN_TARGET_MARGIN_RAD, SafetyAbort
+        from ..instruments import latch_margin_rad, inside_soft_limits
         n = len(target)
         lim = self.s.limits
-        worst = min(min(target[i] - lim[i][0], lim[i][1] - target[i]) for i in range(n))
-        if worst < 0.02:
-            raise SafetyAbort(f"动作 {label!r} 的目标位形裕度只有 {worst:+.4f} rad ⇒ 拒绝执行")
+
+        bad = [i + 1 for i in range(n) if not inside_soft_limits(target[i], lim[i][0], lim[i][1])]
+        if bad:
+            raise SafetyAbort(f"动作 {label!r} 的目标在**软限外**（轴 {bad}）⇒ 拒绝执行"
+                              f"（固件会把 q_ref 钳回限内，这一动作不会真的到位）")
+
+        worst = min(latch_margin_rad(target[i], lim[i][0], lim[i][1]) for i in range(n))
+        if worst < MIN_TARGET_MARGIN_RAD:
+            raise SafetyAbort(f"动作 {label!r} 的目标位形距锁存线只有 {worst:+.4f} rad ⇒ 拒绝执行")
+
         cur = self.trace.q[-1] if self.trace.q.size else np.asarray(target)
-        cur_margin = min(min(float(cur[i]) - lim[i][0], lim[i][1] - float(cur[i]))
+        cur_margin = min(latch_margin_rad(float(cur[i]), lim[i][0], lim[i][1])
                          for i in range(min(len(cur), n)))
         if cur_margin < 0.01:
-            raise SafetyAbort(f"动作 {label!r} 的**起点**裕度只有 {cur_margin:+.4f} rad ⇒ 拒绝执行")
+            raise SafetyAbort(f"动作 {label!r} 的**起点**距锁存线只有 {cur_margin:+.4f} rad ⇒ 拒绝执行")
 
     def _at_rest(self, timeout: float = 12.0) -> bool:
         """到静止：**用位置判，不用 dq** —— 上报 dq 的量化 LSB 是 0.00977 rad/s，
@@ -106,16 +126,69 @@ class Executor:
             q1 = q2
         return False
 
+    #: 笛卡尔停稳判据的三个数。**两个条件缺一不可**：
+    #: 「已接近目标」且「窗口内不再动」。
+    #: ⚠ 只看"没在动"会把**规划/启动之前**那一瞬判成停稳 —— 那一刻臂还没开始走，
+    #:   当然不动。真机实测：`wait=False` 下 core 不会自己回读 TCP 做到位判定，
+    #:   所以"停没停"必须由调用方自己判。
+    TCP_SETTLE_NEAR_M = 0.006      # 与 core `move_l` 的到位判据一致（6mm）
+    TCP_SETTLE_BAND_M = 0.0003     # 0.3mm
+    TCP_SETTLE_WINDOW_S = 0.4
+
+    def _tcp_settled(self, tt, pp, goal) -> bool:
+        """TCP 是否**停在了目标附近**。`tt`/`pp` 是逐步累积的采样。"""
+        if len(pp) < 3:
+            return False
+        if float(np.linalg.norm(np.asarray(pp[-1], float) - goal)) > self.TCP_SETTLE_NEAR_M:
+            return False
+        t_end = tt[-1]
+        j = len(tt) - 1
+        while j > 0 and t_end - tt[j] < self.TCP_SETTLE_WINDOW_S:
+            j -= 1
+        if t_end - tt[j] < self.TCP_SETTLE_WINDOW_S * 0.8:   # 窗口还没铺满
+            return False
+        span = float(np.linalg.norm(np.asarray(pp[-1], float) - np.asarray(pp[j], float)))
+        return span < self.TCP_SETTLE_BAND_M
+
     def _q(self) -> np.ndarray:
         st = self.arm.get_state(refresh=True).value
         return np.asarray([j.q for j in st.joints], float)
 
-    def _mark_rest(self, label: str, target: Optional[Sequence[float]]) -> None:
-        t0 = self.trace.t_status[-1] if self.trace.t_status.size else time.monotonic()
-        time.sleep(0.2)
+    def _hold(self, seconds: float) -> None:
+        """保持 `seconds` 秒，**期间主动采样** —— 绝不用裸 `time.sleep`。
+
+        ⚠ 为什么必须主动读：状态帧只在**有人读串口**时才被 `_on_status` 收上来
+        （core 没有读线程）。裸 `sleep` 期间一帧都收不到 ⇒ 静止段的窗口**零样本**，
+        `_rest_hold_windows` 会把整段丢掉，或者更糟：只剩零星几帧、静差算在一个
+        跟本次动作无关的时刻上。
+
+        ⚠ 这也正是 2026-09-20 真机首跑"静差 798 mrad"的两个成因之一（另一个是
+        `capture._flush` 压平时间轴）。
+        """
+        end = time.monotonic() + max(0.0, float(seconds))
+        while True:
+            self.arm.get_state(refresh=True)     # 读 ⇒ 帧进 trace（超时返回 None，不抛）
+            if time.monotonic() >= end:
+                return
+            time.sleep(0.01)
+
+    def _mark_rest(self, label: str, target: Optional[Sequence[float]],
+                   *, travel_rad: Optional[float] = None) -> None:
+        """标一个静止段。**两端都取 `time.monotonic()`** —— 与 `Segment` 的时间源一致。
+
+        ⚠ 旧实现把 `t0` 取成 `trace.t_status[-1]`（**上一帧的时刻**，而静止期本来就没帧
+        ⇒ 它是"上一个动作结束时"的旧快照），`t1` 却取 `time.monotonic()` ⇒ 段自身
+        时长算成 7.8~11.2 s（真实只有 0.2 s），且与 `t_status` 不同源。
+
+        `travel_rad` 从**刚结束的那个动作**继承 —— 重复性指标要靠它判"这一次落点到底是
+        走过来的、还是原地没动"。
+        """
+        t0 = time.monotonic()
+        self._hold(0.2)
         self.segments.append(Segment(label=label, kind="rest", t0=t0,
                                      t1=time.monotonic(),
-                                     target=list(target) if target is not None else None))
+                                     target=list(target) if target is not None else None,
+                                     travel_rad=travel_rad))
 
     # -- 动作执行器 -------------------------------------------------------- #
     def run(self, actions: Sequence[Action], *, deadline: Optional[float] = None) -> List[Segment]:
@@ -135,7 +208,7 @@ class Executor:
             self._mark_rest(a.label or "rest", None)
             return
         if kind == "wait":
-            time.sleep(a.wait_s or 1.0)
+            self._hold(a.wait_s or 1.0)
             return
         if kind in ("movej", "movej_sync"):
             self._joint(a)
@@ -156,8 +229,22 @@ class Executor:
 
     def _joint(self, a: Action) -> None:
         tgt = self._pose(a.target or "bench")
+        via = self._pose(a.via) if a.via else None
+        if via is not None:
+            need = float(np.max(np.abs(np.asarray(tgt) - np.asarray(via))))
+            if need < MIN_EXCITATION_RAD:
+                raise ValueError(
+                    f"动作 {a.label!r} 的 via({a.via}) 与 target({a.target}) 只差 "
+                    f"{need * 1000:.1f} mrad < {MIN_EXCITATION_RAD * 1000:.0f} mrad "
+                    f"⇒ 这个「重复」不会有位移，位形表自己退化了")
         for rep in range(a.reps):
             label = f"{a.label or a.kind}#{rep}" if a.reps > 1 else (a.label or a.kind)
+            if via is not None:
+                # 先把臂挪回本轮**起点** —— 不记 300Hz 窗口（这一段不参与分析），
+                # 但仍要过限位闸，且它会在 100Hz 时间轴上留下痕迹。
+                self._gate(via, label + ":via")
+                self.arm.movej(via, speed=a.speed)
+            q_before = self._q()          # 实测起点 ⇒ travel 是**量出来的**，不是照目标算的
             self._gate(tgt, label)
             with self.cap.window(a.n_ticks, label) as w:
                 t0 = time.monotonic()
@@ -170,12 +257,15 @@ class Executor:
                 fn = self.arm.movej_sync if a.kind == "movej_sync" else self.arm.movej
                 fn(tgt, speed=a.speed)
                 seg.t1 = time.monotonic()
+                seg.travel_rad = float(np.max(np.abs(self._q() - q_before)))
                 self.segments.append(seg)
+            trav = (f"{seg.travel_rad * 1000:6.1f} mrad"
+                    if seg.travel_rad is not None else "  ——  ")
             self._log(f"  {label}: {'sync' if a.kind=='movej_sync' else 'movej'} "
-                      f"@speed {a.speed} → {np.round(tgt, 3).tolist()}")
+                      f"@speed {a.speed} 行程 {trav} → {np.round(tgt, 3).tolist()}")
             if a.rest_s:
-                time.sleep(a.rest_s)
-                self._mark_rest(label + ":rest", tgt)
+                self._hold(a.rest_s)
+                self._mark_rest(label + ":rest", tgt, travel_rad=seg.travel_rad)
 
     def _cart(self, a: Action) -> None:
         """笛卡尔：``wait=False`` + **同线程**轮询 `get_tcp`/`poll_cart`。
@@ -198,27 +288,43 @@ class Executor:
             v = np.cross([0.0, 0.0, 1.0], u)
             via = c + 0.04 * (np.cos(np.pi / 4) * u + np.sin(np.pi / 4) * v)
             goal = list(c + 0.04 * v) + rpy
-            poses = [list(c) + rpy, list(via) + rpy, goal]
+            # ⚠ **`pose_start` 必须是 `p0` 本身，不是圆心 `c`** —— `move_c` 收的是
+            #   **三点定圆**（起点 + via + 终点），且固件会把 `pose_start` 与**当前实测 TCP**
+            #   比对（容差 6mm / 0.03rad）。给圆心会直接抛 `InvalidCommandError`：
+            #   圆心离实测 TCP 恒差一个半径（这里 40mm）。
+            poses = [list(p0) + rpy, list(via) + rpy, goal]
         label = a.label or a.kind
         with self.cap.window(a.n_ticks, label):
             t0 = time.monotonic()
-            if a.kind == "cart_line":
-                plan = self.arm.move_l(tuple(poses[0]), speed=a.speed, wait=False)
-            else:
-                plan = self.arm.move_c(tuple(poses[0]), tuple(poses[1]), tuple(poses[2]),
-                                       speed=a.speed, wait=False)
+            try:
+                if a.kind == "cart_line":
+                    plan = self.arm.move_l(tuple(poses[0]), speed=a.speed, wait=False)
+                else:
+                    plan = self.arm.move_c(tuple(poses[0]), tuple(poses[1]), tuple(poses[2]),
+                                           speed=a.speed, wait=False)
+            except Exception as exc:                      # noqa: BLE001
+                # 规划失败（IK 不可达 / 三点近共线 ⇒ 巨半径 / 起点与实测 TCP 不符）是
+                # **测量结果**而非安全隐患 ⇒ **响亮地记下来并跳过**，别让一条动作毁掉整档。
+                # （判据仍要看得见：段里带 `error`，指标会因此判未实测而不是给分。）
+                self._log(f"  ⚠ {label} 笛卡尔规划失败：{exc!r}")
+                self.segments.append(Segment(label=label, kind=a.kind, t0=t0,
+                                             t1=time.monotonic(), target=None,
+                                             extra={"error": repr(exc), "poses": poses}))
+                return
+            goal = np.asarray(poses[-1][:3], float)
             tt, pp, settled = [], [], False
             t_start = time.monotonic()
             while time.monotonic() - t_start < self.arm.move_timeout:
                 got = self.arm.get_tcp().value
                 if got is not None:
                     tt.append(time.monotonic()); pp.append(list(got[:3]))
-                r = self.arm.poll_cart()
-                if r is not None and getattr(r, "settled", False):
+                if self._tcp_settled(tt, pp, goal):
                     settled = True
                     break
                 time.sleep(0.01)
             t1 = time.monotonic()
+            dev_mm = (float(np.linalg.norm(np.asarray(pp[-1], float) - goal) * 1000.0)
+                      if pp else None)
         if pp:
             self.trace.tcp_t = np.concatenate([self.trace.tcp_t, np.asarray(tt)])
             self.trace.tcp_p = np.concatenate([self.trace.tcp_p, np.asarray(pp)])
@@ -226,11 +332,13 @@ class Executor:
                                      extra={"plan_us": getattr(plan, "plan_us", None),
                                             "n_wp": getattr(plan, "n_wp", None),
                                             "settled": settled, "n_tcp": len(pp),
-                                            "poses": poses}))
+                                            "dev_mm": dev_mm, "poses": poses}))
         self._log(f"  {label}: {a.kind} n_wp={getattr(plan,'n_wp',None)} "
-                  f"plan_us={getattr(plan,'plan_us',None)} settled={settled} tcp采样={len(pp)}")
+                  f"plan_us={getattr(plan,'plan_us',None)} settled={settled} "
+                  f"tcp采样={len(pp)} 到位偏差="
+                  + ("—" if dev_mm is None else f"{dev_mm:.2f}mm"))
         if a.rest_s:
-            time.sleep(a.rest_s)
+            self._hold(a.rest_s)
 
     def _watchdog(self, a: Action) -> None:
         """看门狗时延：**停止发命令**，等 `flags & 0x2`（`WD_TRIPPED`）置位。

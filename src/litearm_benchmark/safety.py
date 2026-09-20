@@ -2,8 +2,11 @@
 
 这个模块的存在理由是几条**真实的、踩过的**事故（都记在项目知识库里）：
 
-* **J4 软限锁死**：位置越限锁存**不受 enabled 门控**，`ERR 0x06` 且 `reset` 清不掉；
-  停机前必须把 J4 停在限内。J4 距上软限只有 **0.0175 rad**，是所有轴里最危险的。
+* **J4 软限锁死**：位置越限锁存**不受 enabled 门控**，`ERR 0x06` 且 `reset` 清不掉。
+  ⚠ 锁存线是 `软限 ± POS_LATCH_BAND`（固件 `safety_check.c:165`），**不是软限本身** ——
+  本模块 2026-09-20 首次上真机时正是因为量错了这条线，把 J4（软限上界仅 +0.0175、
+  零位天然距它 0.0097）的**正常零位**判成危险，导致整档跑不起来。详见
+  :func:`litearm_benchmark.instruments.latch_margin_rad`。
 * **失能会漂出软限位**：位置环一断软限位形同虚设；任何轴越限 ⇒ 整个笛卡尔面失效。
 * **`zero_g_stop` 是异步的**：只发帧不等确认，之后仍有约 677ms 固件拒运动命令。
 * **破坏性脚本开头必须断言起点干净**。
@@ -17,10 +20,21 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence
 
-#: 任何轴距软限的**最小可接受裕度**。低于它直接拒绝动臂。
-#: 依据：J4 的软限上界仅 +0.0175 rad，而位置包络的判定余量是 0.05 rad；留 0.05 是
-#: 「比包络余量还宽一档」的经验值 —— 裕度低于它时，一次正常的跟踪超调就可能触到包络。
-DEFAULT_MIN_MARGIN_RAD = 0.05
+from . import instruments as I
+
+#: **动作闸**（`Executor._gate`）对**目标位形**距**锁存线**（`软限 ± POS_LATCH_BAND`）
+#: 的最小裕度要求。
+#:
+#: ⚠⚠ **量到锁存线，不是量到软限** —— 这一条是 2026-09-20 真机首次上机时暴露的：
+#: 原实现（与本文档的早期版本）量到软限，于是 J4 —— 软限上界仅 **+0.0175**、零位天然
+#: 距它只有 **0.0097** —— 的**正常零位**被永久判成危险，三道判据（0.05/0.02/0.01）
+#: 全部恒不可达 ⇒ **benchmark 在这台臂上一次也跑不起来**。
+#: 固件的锁存判定在 `safety_check.c:165` 的 `q_max + 0.05`，软限只是**指令钳位**边界，
+#: 顶在软限上是正常工作状态（见 :func:`litearm_benchmark.instruments.latch_margin_rad`）。
+#:
+#: ⚠ 另注：**在软限内的点距锁存线恒 > `POS_LATCH_BAND`** ⇒ 用它当"起点裕度"判据是空转；
+#: 它真正把关的地方是**目标位形**（`Executor._gate`），那里才需要"离限位还有点余量"。
+MIN_TARGET_MARGIN_RAD = 0.02
 
 #: `disable()` 会掉力矩（扶着的人吃力）并触发 `drop_hold` 锁存 ⇒ **基准测试绝不主动失能**。
 #: 收尾统一走 `park()`（mode=0）+ 回零位保持，而不是失能。
@@ -34,7 +48,7 @@ class SafetyAbort(RuntimeError):
 @dataclass
 class PreflightReport:
     ok: bool
-    margins: List[float] = field(default_factory=list)      # 逐轴 min(下余, 上余)
+    margins: List[float] = field(default_factory=list)      # 逐轴**距锁存线**裕度
     q: List[float] = field(default_factory=list)
     faults: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
@@ -51,7 +65,7 @@ class PreflightReport:
     def render(self) -> str:
         if not self.margins:
             return "（无位置数据）"
-        return (f"最小裕度 {self.min_margin:+.4f} rad @J{self.tightest}"
+        return (f"最小距锁存线裕度 {self.min_margin:+.4f} rad @J{self.tightest}"
                 f"（q={self.q[self.tightest - 1]:+.4f}）")
 
 
@@ -71,16 +85,21 @@ def _limits(arm) -> List[tuple]:
                       "请确认已连接并使能，或显式传入 limits。")
 
 
-def preflight(arm, *, min_margin_rad: float = DEFAULT_MIN_MARGIN_RAD,
-              limits: Optional[Sequence[tuple]] = None,
+def preflight(arm, *, limits: Optional[Sequence[tuple]] = None,
               allow_faults: bool = False) -> PreflightReport:
     """动臂前的安全前置。**只读**，不发任何运动命令。
 
-    检查项：
+    检查项（**判据一律照抄固件的锁存语义**，见 `safety_check.c:165-190`）：
       1. 能拿到位置与软限位；
-      2. 逐轴裕度 ≥ ``min_margin_rad``；
-      3. `joint_fault == 0`（锁存轴会让整臂静默降级，且"回落"不可观测）；
+      2. `joint_fault == 0`（锁存轴会让整臂静默降级，且"回落"不可观测）；
+      3. 没有轴**越过锁存线**（`软限 ± POS_LATCH_BAND`）—— 那才是会锁死的那条线；
+         唯一的例外是固件自己认的**失能 + 幅度 ≤ `POS_RECOVER_BAND`**（可受控回程）；
       4. `drop_hold` 推断为真时告警（只能推断，状态帧没有该位）。
+
+    ⚠ **为什么没有"距软限 ≥ X"这类通用裕度判据**：固件的锁存判定点是**包络**
+    （`q_max + 0.05`），软限只是指令钳位边界。于是任何**在软限内**的点距锁存线**恒 > 0.05**
+    ⇒ 这类判据对限内是空转；而它在限外又会把"失能漂出软限"这个**常规可恢复态**
+    （固件专门为它写了回程宽限）误杀成故障。2026-09-20 真机首跑就是被它挡死的。
     """
     st_msg = arm.get_state(refresh=True)
     st = st_msg.value
@@ -93,17 +112,43 @@ def preflight(arm, *, min_margin_rad: float = DEFAULT_MIN_MARGIN_RAD,
         raise SafetyAbort(f"轴数不匹配：状态帧 {len(q)} vs 限位 {len(lim)}")
 
     rep = PreflightReport(ok=True, q=q)
-    rep.margins = [min(q[i] - lim[i][0], lim[i][1] - q[i]) for i in range(len(q))]
+    rep.margins = [I.latch_margin_rad(q[i], lim[i][0], lim[i][1]) for i in range(len(q))]
 
     if st.joint_fault and not allow_faults:
         axes = [i + 1 for i in range(len(q)) if st.joint_fault & (1 << i)]
         rep.faults.append(f"joint_fault=0x{st.joint_fault:04X} 锁存轴 {axes}")
     if getattr(st, "drop_hold_inferred", False):
         rep.warnings.append("drop_hold 推断为真（状态帧无该位，只能推断）")
-    if rep.min_margin < min_margin_rad:
-        rep.faults.append(
-            f"J{rep.tightest} 裕度 {rep.min_margin:+.4f} rad < 要求 {min_margin_rad:.3f} "
-            f"—— 越限锁存**不受 enabled 门控**且 reset 清不掉，拒绝动臂")
+
+    # ① 越过锁存线 —— 固件只在**这个区域**里才可能置 `joint_fault`（`safety_check.c:165`
+    #    的判定点就在包络上）。唯一的豁免是它自己的失能回程宽限。
+    beyond = [i for i in range(len(q)) if rep.margins[i] <= 0.0]
+    if beyond:
+        axes = [i + 1 for i in beyond]
+        worst = min(rep.margins[i] for i in beyond)          # 越线最多（负得最多）
+        enabled = bool(getattr(st, "enabled", False))
+        if not enabled and -worst <= I.POS_RECOVER_BAND.value:
+            rep.warnings.append(
+                f"轴 {axes} 越出锁存线 {(-worst):.4f} rad，但**失能态且幅度在 "
+                f"`POS_RECOVER_BAND` {I.POS_RECOVER_BAND.value} 内** —— 固件不锁存，"
+                f"`enable` 的受控回程会把它带回（`safety_check.c:183`）；继续")
+        else:
+            why = ("当前**已使能**，回程宽限不适用" if enabled
+                   else f"越线幅度 {-worst:.4f} > `POS_RECOVER_BAND`")
+            rep.faults.append(
+                f"轴 {axes} 越过**锁存线** {(-worst):.4f} rad 且{why}"
+                f"—— 固件连续 {I.POS_DEBOUNCE_CYCLES.value} 拍后置 `joint_fault`，"
+                f"而它**不受 enabled 门控、`reset` 也清不掉** ⇒ 拒绝动臂")
+
+    # ② 软限外但**未越锁存线** —— 固件在这个区间**根本不进锁存分支**（两态都不锁存），
+    #    属常规态（失能的臂会漂出去）。只告警，并提示第一个动作应把它带回限内。
+    outside = [i + 1 for i in range(len(q))
+               if rep.margins[i] > 0.0
+               and not I.inside_soft_limits(q[i], lim[i][0], lim[i][1])]
+    if outside:
+        rep.warnings.append(
+            f"轴 {outside} 在**软限外但未越锁存线** —— 固件不会锁存（判定点在包络上），"
+            f"可直接跑；但应尽快用动作把它带回限内（越限时 `q_ref` 会被钳）")
 
     rep.ok = not rep.faults
     return rep

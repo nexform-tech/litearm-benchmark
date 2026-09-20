@@ -119,8 +119,6 @@ class BenchSession:
 
         identity = snapshot_identity(self.arm)
         raw = analyze(cap.trace, segs, identity,
-                      tcp_line=_tcp_dev(cap.trace, "cart_line"),
-                      tcp_arc=_tcp_dev(cap.trace, "cart_arc"),
                       bench=cap.trace.meta.get("kin_bench"))
         # `analyze` 是从 trace 算的；把 suite 在运行期直接量到的量合并进来
         for k in ("g_match_pct", "watchdog_latency_s", "min_margin_rad",
@@ -150,8 +148,8 @@ def _post_fill(trace, limits) -> None:
     """收全 trace 之后才能算的：最小限位裕度、位置越限事件数。"""
     if trace.q.size and limits:
         n = min(trace.q.shape[1], len(limits))
-        lo = np.asarray([limits[i][0] for i in range(n)], float)
-        hi = np.asarray([limits[i][1] for i in range(n)], float)
+        lo = np.asarray([limits[i][0] for i in range(n)], float) - I.POS_LATCH_BAND.value
+        hi = np.asarray([limits[i][1] for i in range(n)], float) + I.POS_LATCH_BAND.value
         marg = np.minimum(trace.q[:, :n] - lo, hi - trace.q[:, :n])
         trace.meta["min_margin_rad"] = float(np.nanmin(marg))
     # POSITION_VIOLATION 的**上升沿**次数。位名字来自 core 的 flag_names（与 bit 一一对应），
@@ -167,44 +165,10 @@ def _post_fill(trace, limits) -> None:
         trace.meta["pos_violation_events"] = ev
 
 
-def _tcp_dev(trace, kind: str) -> Optional[Dict[str, object]]:
-    """把 TCP 采样与**理论路径**比，给出最大偏离（mm）。
-
-    理论路径用**端点连线**（直线）或**三点定圆的径向偏差**（圆弧）——
-    两者都只依赖 TCP 采样本身，不需要运动学模型（这正是"基于 litearm-core"的取舍）。
-    """
-    if trace.tcp_t.size < 10:
-        return None
-    # TCP 采样是混在一起的 —— 用时间窗无法区分线段归属，故这里只在**单段**场景下有效。
-    # 这是已知限制：多次笛卡尔动作会共用一份采样。报告里会注明。
-    p = trace.tcp_p
-    if kind == "cart_line":
-        a, b = p[0], p[-1]
-        ab = b - a
-        L = float(np.linalg.norm(ab))
-        if L < 1e-6:
-            return None
-        d = np.cross(np.tile(ab, (len(p), 1)), p - a) / L
-        dev = float(np.linalg.norm(d, axis=1).max() * 1000.0)
-        return {"dev_mm": dev,
-                "evidence": f"TCP 采样 {len(p)} 点 vs 端点连线（弦长 {L*1000:.1f} mm）；"
-                            "⚠ 多点共用一份采样，多次笛卡尔段会互相污染"}
-    # 圆弧：三点定圆，取径向偏差
-    if len(p) >= 3:
-        a, b, c = p[0], p[len(p) // 2], p[-1]
-        u, v = b - a, c - a
-        nrm = np.cross(u, v)
-        nn = float(np.linalg.norm(nrm))
-        if nn < 1e-9:
-            return None
-        return {"dev_mm": None,
-                "evidence": "圆弧三点近共线 ⇒ 定不出圆（这一段的径向偏差不给分）"}
-    return None
-
-
 def _seg_dump(s: Segment) -> Dict[str, object]:
     return {"label": s.label, "kind": s.kind, "t0": s.t0, "t1": s.t1,
-            "target": s.target, "chunk": s.chunk, "extra": s.extra}
+            "target": s.target, "chunk": s.chunk, "extra": s.extra,
+            "travel_rad": s.travel_rad}
 
 
 # --------------------------------------------------------------------------- #

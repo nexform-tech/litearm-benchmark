@@ -25,20 +25,24 @@ TIERS: Dict[str, tuple] = {}
 
 
 def _quick() -> List[Action]:
+    # ⚠ **凡 `reps > 1` 的都必须给 `via`** —— 否则第 2..N 轮的目标与上一轮落点完全一样，
+    #   臂一步都不动，那个"重复"只是上一轮的复制（2026-09-20 真机首跑实测：段长 0.02 s）。
+    #   `via` 让每一轮都**真的走一趟**：先到 `via`，再落到 `target`。
+    #   `via` 那一段不记 300Hz 窗口（不参与分析），但会过限位闸、也留在 100Hz 时间轴上。
     return [
         Action("rest", "起手静止", rest_s=0.5),
         Action("gcheck", "静态 G 对照", n_ticks=200),
-        # 小位移重复 3 次：**同一目标**才能算重复定位精度
-        Action("movej", "小位移@0.3", target="bench_j2lo", speed=0.3, n_ticks=700,
-               reps=3, rest_s=1.0),
-        # 高速档：这一档的残余最大，是跟踪与越峰的最坏工况
-        Action("movej", "小位移@1.0", target="bench_j2hi", speed=1.0, n_ticks=700,
-               reps=2, rest_s=1.0),
+        # 重复性档：同一目标 3 次落点，每次从 bench 走过来（0.50 rad）
+        Action("movej", "小位移@0.3", target="bench_j2lo", via="bench", speed=0.3,
+               n_ticks=700, reps=3, rest_s=1.0),
+        # 高速档：行程最大（0.80 rad）、速度最高 ⇒ 跟踪与越峰的最坏工况
+        Action("movej", "小位移@1.0", target="bench_j2hi", via="bench_j2lo", speed=1.0,
+               n_ticks=700, reps=2, rest_s=1.0),
         # 中位移：给整定时间/上升时间一个"正常档"
-        Action("movej", "中位移@0.5", target="bench", speed=0.5, n_ticks=900,
-               reps=2, rest_s=1.5),
-        Action("movej", "反向@0.5", target="bench_j2lo", speed=0.5, n_ticks=900,
-               rest_s=1.5),
+        Action("movej", "中位移@0.5", target="bench", via="bench_j2lo", speed=0.5,
+               n_ticks=900, reps=2, rest_s=1.5),
+        Action("movej", "反向@0.5", target="bench_j2lo", via="bench", speed=0.5,
+               n_ticks=900, rest_s=1.5),
         Action("rest", "收尾静止", rest_s=1.0),
         Action("watchdog", "看门狗时延"),
         Action("kin_bench", "固件自检"),
@@ -49,13 +53,13 @@ def _standard() -> List[Action]:
     a = _quick()
     a += [
         # 多轴联动 —— 跟踪/力矩的真实工况（单轴永远看不到重力耦合）
-        Action("movej", "多轴 Q0→Q1", target="bench_multi", speed=0.6, n_ticks=1100,
-               reps=2, rest_s=1.5),
-        Action("movej", "多轴 Q1→Q2", target="bench_multi2", speed=0.6, n_ticks=1100,
-               reps=2, rest_s=1.5),
-        # 同步：与前面的逐轴 movej 同目标同速度，直接可比
-        Action("movej_sync", "同步多轴", target="bench_multi", speed=0.6,
-               n_ticks=1100, reps=2, rest_s=1.5),
+        Action("movej", "多轴 Q0→Q1", target="bench_multi", via="bench_multi2",
+               speed=0.6, n_ticks=1100, reps=2, rest_s=1.5),
+        Action("movej", "多轴 Q1→Q2", target="bench_multi2", via="bench_multi",
+               speed=0.6, n_ticks=1100, reps=2, rest_s=1.5),
+        # 同步：与前面的逐轴 movej 同目标**同 via**同速度，直接可比
+        Action("movej_sync", "同步多轴", target="bench_multi", via="bench_multi2",
+               speed=0.6, n_ticks=1100, reps=2, rest_s=1.5),
         # 笛卡尔
         Action("cart_line", "直线 50mm", speed=0.3, n_ticks=1100, rest_s=1.0,
                extra={"dy": 0.05}),
@@ -81,8 +85,10 @@ def _full() -> List[Action]:
         Action("movej", "速度档 1.0", target="bench_j2lo", speed=1.0, n_ticks=1000,
                rest_s=1.0),
         # 长时间稳定性：seq 连续性 + 热斜率（≥2min 才有意义）
-        Action("movej", "耐久循环", target="bench_multi", speed=0.5, n_ticks=600,
-               reps=14, rest_s=0.3),
+        # ⚠ `reps=14` 尤其必须有 `via` —— 否则 14 轮里只有第 1 轮在动，后 13 轮原地不动，
+        #   "耐久"会变成"静置"（本项目"判据必须有判别力"那条）。
+        Action("movej", "耐久循环", target="bench_multi", via="bench_multi2",
+               speed=0.5, n_ticks=600, reps=14, rest_s=0.3),
         Action("wait", "热平衡", wait_s=20.0),
         Action("rest", "耐久后静止", rest_s=1.0),
         Action("gcheck", "耐久后 G 对照", n_ticks=200),
@@ -104,10 +110,10 @@ def _manual_load() -> List[Action]:
                requires_manual=True, n_ticks=200),
         Action("rest", "装载后静止", rest_s=1.0),
         Action("gcheck", "装载后 G 对照", n_ticks=200),
-        Action("movej", "装载后小位移@0.3", target="bench_j2lo", speed=0.3,
-               n_ticks=700, reps=3, rest_s=1.0),
-        Action("movej", "装载后中位移@0.5", target="bench", speed=0.5, n_ticks=900,
-               reps=2, rest_s=1.5),
+        Action("movej", "装载后小位移@0.3", target="bench_j2lo", via="bench",
+               speed=0.3, n_ticks=700, reps=3, rest_s=1.0),
+        Action("movej", "装载后中位移@0.5", target="bench", via="bench_j2lo",
+               speed=0.5, n_ticks=900, reps=2, rest_s=1.5),
         Action("manual", "**拆下**配重并把前馈设回 0",
                manual_hint="先把固件前馈设回 0，再拆配重 —— 顺序反了会有一次过补偿上跳。",
                requires_manual=True, n_ticks=200),
@@ -144,6 +150,8 @@ def describe() -> str:
         for a in acts:
             tgt = f" → {a.target}" if a.target else ""
             rep = f" ×{a.reps}" if a.reps > 1 else ""
+            # `via` 一律印出来：它决定"重复"是不是真的重复，看不见就等于没有
+            rep += f"（每轮先经 {a.via}）" if a.via else ""
             hint = f" —— {a.manual_hint}" if a.is_manual else ""
             out.append(f"- `{a.kind}` {a.label}{tgt}{rep}{hint}")
     return "\n".join(out)

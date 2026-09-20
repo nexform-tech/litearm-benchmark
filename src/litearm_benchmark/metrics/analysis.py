@@ -38,6 +38,15 @@ class Segment:
     target: Optional[List[float]] = None
     chunk: Optional[int] = None
     extra: Dict[str, object] = field(default_factory=dict)
+    #: 本段**实测**最大单轴行程（rad）—— 由执行器在动臂时量（`Executor._joint` 填）。
+    #: ``None`` = 没记录（旧数据、或本来就是静止段）⇒ 分析侧**跳过该段**，不猜。
+    #:
+    #: ⚠ 为什么必须逐段量：`MIN_EXCITATION_RAD` 原来只有**全程**一版，于是
+    #: "重复 3 次"这种动作里，若臂**根本没动**（目标恰好等于上一个动作的落点），
+    #: 三次落点的差就只是**传感器噪声** —— 2026-09-20 真机首跑实测：`gcheck` 的
+    #: 最后一个位形就是 `bench_j2lo`，随后 `小位移@0.3` 的三次"重复"段长全是 0.02 s，
+    #: 而 `static.repeat_ptp_mrad` 拿着那 0.76 mrad **判了 91 分**。
+    travel_rad: Optional[float] = None
 
 
 #: 一旦"臂基本没动"，这些指标全部判未实测（它们全是运动派生量）。
@@ -55,6 +64,18 @@ _MOTION_KEYS = (
 #: 激励闸：全程最大单轴行程低于此值 ⇒ 一切**运动类**指标判为未实测。
 #: 20 mrad ≈ 位置编码器 LSB 的 200 倍，也远小于任何一个有意义动作的行程。
 MIN_EXCITATION_RAD = 0.02
+
+
+def segment_excited(s: Segment) -> Optional[bool]:
+    """单段版激励闸：这一段**实测**动了吗？
+
+    * ``True``  —— 行程 ≥ :data:`MIN_EXCITATION_RAD`；
+    * ``False`` —— 动了但不够（目标等于起点、或只抖了一下）；
+    * ``None``  —— **没记录行程**（旧数据）⇒ 调用方**必须跳过**，不许当成 ``True``。
+
+    判据与全程版**共用同一个阈值** —— "动了"的标准不该因为量程不同而变。
+    """
+    return None if s.travel_rad is None else (float(s.travel_rad) >= MIN_EXCITATION_RAD)
 
 
 @dataclass
@@ -84,8 +105,7 @@ class RawResult:
 
 # --------------------------------------------------------------------------- #
 def analyze(trace, segments: Sequence[Segment], identity: Dict[str, object],
-            *, tcp_line: Optional[dict] = None, tcp_arc: Optional[dict] = None,
-            bench: Optional[dict] = None) -> RawResult:
+            *, bench: Optional[dict] = None) -> RawResult:
     """总入口。``bench`` 是固件自检结果（来自 `diag.kin_bench()`）的字典。"""
     r = RawResult()
     segs = list(segments)
@@ -105,7 +125,7 @@ def analyze(trace, segments: Sequence[Segment], identity: Dict[str, object],
         _tracking(r, trace, segs)
         _dynamic(r, trace, segs)
         _torque(r, trace, segs, identity)
-        _cartesian(r, tcp_line, tcp_arc)
+        _cartesian(r, trace, segs)
         _sync(r, trace, segs)
     else:
         why = (f"**激励不足**：全程最大单轴行程只有 {travel * 1000:.2f} mrad "
@@ -166,26 +186,36 @@ def _static(r: RawResult, trace, segs, identity) -> None:
           evidence="静止段落点均值 vs clamp 后的指令目标，逐段取最大",
           note=f"最差 J{worst_axis}；共 {len(holds)} 个静止段")
 
-    # 重复性：**同一目标**的多段之间取极差；没有重复目标就退化为「同段内各样本的极差」
+    # 重复性：**同一目标**的多段之间取极差。
+    #
+    # ⚠ **只有"真动过"的落点才算**（逐段激励闸）。不动的话，同一目标的多次落点之间
+    #   的差只是**传感器噪声** —— 那正是 2026-09-20 真机首跑里那个 0.76 mrad「91 分」
+    #   的来历：`gcheck` 已把臂停在 `bench_j2lo`，随后三次"重复"一次都没动。
     by_tgt: Dict[tuple, List[np.ndarray]] = {}
+    n_used = 0
     for s, _t, qw in holds:
         if not s.target:
             continue
+        if segment_excited(s) is not True:      # False(没动) 与 None(没记录) 一律不算
+            continue
         key = tuple(round(v, 4) for v in np.asarray(s.target, float))
         by_tgt.setdefault(key, []).append(qw.mean(axis=0))
-    ptp = 0.0
-    detail = ""
-    if any(len(v) >= 2 for v in by_tgt.values()):
-        for key, arrs in by_tgt.items():
-            if len(arrs) < 2:
-                continue
-            ptp = max(ptp, float(np.ptp(np.stack(arrs), axis=0).max() * 1000.0))
-        detail = "同一目标多轮之间的极差"
+        n_used += 1
+
+    reps = {k: v for k, v in by_tgt.items() if len(v) >= 2}
+    if reps:
+        ptp = max(float(np.ptp(np.stack(arrs), axis=0).max() * 1000.0)
+                  for arrs in reps.values())
+        r.set("static.repeat_ptp_mrad", ptp,
+              evidence=f"同一目标多轮之间的极差；{n_used} 个**真动过**的落点参与，"
+                       f"{len(reps)} 个目标有 ≥2 次")
     else:
-        for _s, _t, qw in holds:
-            ptp = max(ptp, float(np.ptp(qw, axis=0).max() * 1000.0))
-        detail = "无重复目标 ⇒ 退化为段内样本极差（**不是重复定位精度**，报告里会标注）"
-    r.set("static.repeat_ptp_mrad", ptp, evidence=detail)
+        # ⛔ **不许退化成"段内样本极差"** —— 那是**噪声**不是重复定位精度。
+        #   拿它打分就是拿一个别的量冒充（本项目"未实测 ≠ 编个数"那条规矩）。
+        r.skip("static.repeat_ptp_mrad",
+               f"没有**真动过**的重复落点（共 {len(holds)} 个静止段、"
+               f"{n_used} 个真动过）⇒ 重复定位精度**测不了**，"
+               f"而不是「测出来很好」（静止臂的落点差只是传感器噪声）")
 
     # 物理地板归一化
     fc0 = identity.get("fc0"); fc1 = identity.get("fc1")
@@ -213,8 +243,15 @@ def _tracking(r: RawResult, trace, segs) -> None:
     keys = ("track.rms_mrad", "track.peak_mrad", "track.align_ratio",
             "track.lag_ms", "track.follow_p95_mrad")
     results = []
+    n_noexc = 0
     for s in segs:
         if s.chunk is None or s.kind not in ("movej", "movej_sync", "move_l", "move_c"):
+            continue
+        # ⚠ **逐段激励闸**：目标等于上一个动作落点的"空动作"段长只有 0.02 s，
+        #   里面的 31 个帧全是静止样本 —— 它过得了"≥30 帧"这条代理判据，
+        #   却**不含任何跟踪信息**，对齐只会给出 NaN。按行程判才是问对了问题。
+        if segment_excited(s) is not True:
+            n_noexc += 1
             continue
         m = (trace.t_status >= s.t0) & (trace.t_status <= s.t1 + 0.3)
         if int(m.sum()) < 30:
@@ -226,20 +263,33 @@ def _tracking(r: RawResult, trace, segs) -> None:
         res = align(trace.t_status[m], trace.q[m], tl, qr, axes=ax)
         results.append((s, res, m, tl, qr))
     if not results:
+        why = (f"没有可对齐的**运动**段（{n_noexc} 段行程不足 "
+               f"{MIN_EXCITATION_RAD * 1000:.0f} mrad 被逐段激励闸剔除）"
+               if n_noexc else
+               "没有可对齐的运动段（需要 300Hz 日志窗口 + ≥30 个状态帧）")
         for k in keys:
-            r.skip(k, "没有可对齐的运动段（需要 300Hz 日志窗口 + ≥30 个状态帧）")
+            r.skip(k, why)
         return
 
     good = [x for x in results if x[1].ok]
+    _exc = (f"；另有 {n_noexc} 段行程不足 {MIN_EXCITATION_RAD * 1000:.0f} mrad，"
+            f"逐段激励闸未放行") if n_noexc else ""
     r.set("track.rms_mrad",
           (max(x[1].rms for x in good) * 1000.0) if good else None,
-          evidence=f"逐段互相关对齐后取**最差**一段；{len(good)}/{len(results)} 段自证达标")
+          evidence=f"逐段互相关对齐后取**最差**一段；{len(good)}/{len(results)} 段自证达标"
+                   + _exc)
     r.set("track.peak_mrad",
           (max(x[1].peak for x in good) * 1000.0) if good else None,
           evidence="同上的残差峰值")
-    r.set("track.align_ratio",
-          min(x[1].ratio for x in results) if results else None,
-          evidence="**自证量**取最差（1.0≈噪声，真结构 3~6×）")
+    # ⚠ **`min` 前必须先滤掉 NaN**：两流无关时 `control_rms` 为 NaN ⇒ `ratio` 为 NaN，
+    #   而 Python 的 `min` 遇 NaN 的结果**顺序相关**（先遇到谁就留谁）⇒ NaN 会污染整个
+    #   `min`，把一个"其实算得出来"的自证量静默变成「未实测」（2026-09-20 真机首跑实测：
+    #   3 段有 3.6~6.3× 的有效自证量，却被 5 段的 NaN 淹掉，指标直接不出分）。
+    ratios = [x[1].ratio for x in results if np.isfinite(x[1].ratio)]
+    r.set("track.align_ratio", min(ratios) if ratios else None,
+          evidence=f"**自证量**取最差（1.0≈噪声，真结构 3~6×）；"
+                   f"{len(ratios)}/{len(results)} 段算得出自证量"
+                   + ("" if ratios else " ⇒ 全部无自证量，不出分"))
     r.set("track.lag_ms",
           float(np.median([x[1].delta for x in good]) * 1000.0) if good else None,
           evidence="各段 δ 的中位数（负=实测领先参考）")
@@ -412,18 +462,109 @@ def _torque(r: RawResult, trace, segs, identity) -> None:
 
 
 # =============================== F. 笛卡尔 ================================== #
-def _cartesian(r: RawResult, tcp_line: Optional[dict], tcp_arc: Optional[dict]) -> None:
-    for key, d, why in (
-        ("cart.line_dev_mm", tcp_line, "本档未跑直线段或未采到 TCP"),
-        ("cart.arc_dev_mm", tcp_arc, "本档未跑圆弧段或未采到 TCP"),
-    ):
-        if d and d.get("dev_mm") is not None:
-            r.set(key, d["dev_mm"], evidence=d.get("evidence", "TCP 采样 vs 理论路径"))
+def _cart_pieces(trace, segs):
+    """每个笛卡尔段**自己的** TCP 采样（按 100Hz 时间轴切窗）。"""
+    out = []
+    for s in segs:
+        if s.kind not in ("cart_line", "cart_arc"):
+            continue
+        m = (trace.tcp_t >= s.t0) & (trace.tcp_t <= s.t1)
+        if int(m.sum()) >= 5:
+            out.append((s, trace.tcp_t[m], trace.tcp_p[m]))
+    return out
+
+
+def _circumcenter(a, b, c):
+    """三角形**外心**（3D）。返回 ``(center, 单位法向, 半径)``；近共线 ⇒ ``None``。"""
+    a, b, c = (np.asarray(p, float) for p in (a, b, c))
+
+    def w(x, y, z):                       # 顶点 x 的外心权重（重心坐标）
+        cr = np.cross(y - x, z - x)
+        d = float(np.dot(cr, cr))
+        if d < 1e-18:
+            return None
+        return float(np.dot(z - y, z - y) * np.dot(x - y, x - z) / (2.0 * d))
+
+    wa, wb, wc = w(a, b, c), w(b, c, a), w(c, a, b)
+    if wa is None or wb is None or wc is None:
+        return None
+    center = wa * a + wb * b + wc * c
+    n = np.cross(b - a, c - a)
+    n = n / float(np.linalg.norm(n))
+    return center, n, float(np.linalg.norm(a - center))
+
+
+def _dev_line(p, start, goal) -> Optional[float]:
+    """采样点到「起点→目标」连线的**最大垂距**（m）。"""
+    a, b = np.asarray(start, float), np.asarray(goal, float)
+    ab = b - a
+    L = float(np.linalg.norm(ab))
+    if L < 1e-9:
+        return None
+    d = np.cross(np.tile(ab, (len(p), 1)), p - a) / L
+    return float(np.linalg.norm(d, axis=1).max())
+
+
+def _dev_arc(p, center, normal, radius) -> float:
+    """采样点到**圆**的径向偏差（m）—— 先投到圆所在平面，再比半径。"""
+    rel = p - np.asarray(center, float)
+    inplane = rel - np.outer(rel @ np.asarray(normal, float), np.asarray(normal, float))
+    return float(np.abs(np.linalg.norm(inplane, axis=1) - radius).max())
+
+
+def _cartesian(r: RawResult, trace, segs) -> None:
+    """笛卡尔精度 —— **逐段**算，每段只跟**它自己的**理论路径比。
+
+    ⚠⚠ 旧实现把**整条** `trace.tcp_p` 一次性喂进来（直线一次、圆弧一次），于是两次
+    笛卡尔动作的采样被拼在一起。2026-09-20 真机实测的后果：直线段的弦长被算成
+    **95.1 mm**（真实 56.5 mm）、偏差报成 **20.6 mm ⇒ 判 0 分** ——
+    **那是把圆弧段当成了直线的偏离，是假红**。
+    旧证据里本来就写着「⚠ 多点共用一份采样，多次笛卡尔段会互相污染」——
+    **写明了却照样当分数用，等于没写。**
+    """
+    line_dev = arc_dev = None
+    plans: List[float] = []
+    n_seg = 0
+    skipped: List[str] = []
+
+    for s, _tt, p in _cart_pieces(trace, segs):
+        n_seg += 1
+        pu = (s.extra or {}).get("plan_us")
+        if pu:
+            plans.append(float(pu))
+        poses = (s.extra or {}).get("poses") or []
+        if s.kind == "cart_line":
+            if not poses:
+                skipped.append(f"{s.label}(无目标位姿)")
+                continue
+            dev = _dev_line(p, p[0], np.asarray(poses[-1][:3], float))
+            if dev is not None:
+                line_dev = dev if line_dev is None else max(line_dev, dev)
         else:
-            r.skip(key, why)
-    if tcp_line and tcp_line.get("plan_us"):
-        r.set("cart.plan_us", tcp_line["plan_us"],
-              evidence="固件 `CartPlan.plan_us`（规划耗时）")
+            if len(poses) < 3:
+                skipped.append(f"{s.label}(三点不足)")
+                continue
+            cc = _circumcenter(*[np.asarray(q[:3], float) for q in poses[:3]])
+            if cc is None:
+                skipped.append(f"{s.label}(三点近共线 ⇒ 定不出圆)")
+                continue
+            dev = _dev_arc(p, *cc)
+            arc_dev = dev if arc_dev is None else max(arc_dev, dev)
+
+    for key, val, why in (
+        ("cart.line_dev_mm", line_dev, "本档未跑直线段或未采到 TCP"),
+        ("cart.arc_dev_mm", arc_dev, "本档未跑圆弧段或未采到 TCP"),
+    ):
+        if val is not None:
+            r.set(key, val * 1000.0,
+                  evidence=f"{n_seg} 段笛卡尔**逐段**比各自的理论路径（不再共用一份采样）")
+        else:
+            r.skip(key, why + (f"；跳过：{'、'.join(skipped)}" if skipped else ""))
+
+    if plans:
+        r.set("cart.plan_us", max(plans),
+              evidence=f"各笛卡尔段 `plan_us` 的**最大值**（{len(plans)} 段："
+                       + "、".join(f"{v:.0f}" for v in sorted(plans)) + " µs）")
     else:
         r.skip("cart.plan_us", "本档未跑笛卡尔或固件未上报 plan_us")
 
