@@ -43,12 +43,12 @@ from litearm_benchmark.score import ScoreCard, score
 from litearm_benchmark.replay import compare, load_raw, rescore
 from litearm_benchmark.report import render_markdown, save_run, write_csv
 from litearm_benchmark.safety import PreflightReport, SafetyAbort, park, preflight
-from litearm_benchmark.session import BenchSession, RunResult, run
+from litearm_benchmark.session import BenchSession, RunResult, run, run_actions
 from litearm_benchmark.suites import tiers
 
 __all__ = [
     # 顶层编排
-    "run", "BenchSession", "RunResult",
+    "run", "run_actions", "BenchSession", "RunResult",
     # 会话与安全
     "preflight", "park", "PreflightReport", "SafetyAbort",
     # 采集与分析

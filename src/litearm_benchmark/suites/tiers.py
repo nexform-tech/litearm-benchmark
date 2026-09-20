@@ -149,6 +149,15 @@ TIERS["manual_load"] = (_manual_load(), None)      # 人工档不设预算
 
 DEFAULT_TIER = "standard"
 
+#: 各档**实测挂钟**（秒，2026-09-21 真机；`full` 取自浸泡的 85 轮均值 249.8s）。
+#:
+#: ⚠ 与 `TIERS[...]` 里的**预算**是两件事，别混：
+#:   * 预算 = 执行器的**截断死线**（超了就停跑剩余动作）—— 是安全网，比实测宽松得多；
+#:   * 本表 = 正常跑完要多久 —— 给界面/文档**排期**用。
+#: `None` = 需人工介入，时长取决于操作者。
+MEASURED_WALL_S = {"quick": 58.0, "standard": 150.0, "full": 250.0,
+                   "manual_load": None}
+
 
 def actions_of(tier: str) -> List[Action]:
     if tier not in TIERS:

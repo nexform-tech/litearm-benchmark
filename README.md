@@ -53,6 +53,34 @@ litearm-bench compare --a runA --b runB      # 两次运行逐指标对比
 单轴行程 ≤ 0.8 rad、不碰 J4 的软限上界（它只有 **+0.0175 rad**，是全轴最危险的）、
 不进 URDF 零位奇异。大范围/贴限位的能力**本工程不做**。
 
+## 界面（PyQt5）
+
+```bash
+litearm-bench-gui             # 或 litearm-bench gui
+```
+
+四个页签：**档位** / **单项** / **历史** / **自检**，右侧共用一块成绩单（维度 → 指标明细 →
+未实测/不可信清单），底部是日志。设备栏常显 在线 / 固件 / 使能 / 温度 /
+**最小距锁存线裕度**。
+
+⚠ **界面只是同一套装配路径的另一个前端。** 它没有自己的采集、分析或安全判断 ——
+挑动作表 → `session.run_actions` → 显示结果，仅此三件。安全闸（`preflight` +
+`Executor._gate`）在底层，**界面没有绕过的路径**；`SafetyAbort` 会原样进日志。
+
+⚠ **跑之前一律显式确认**（等价命令行的 `--go`），确认框里列出**将要跑什么**。
+
+⚠ 界面**不在基准跑的同时持有第二条连接** —— `Arm` 是单消费者设计，两条读路径会互抢
+状态帧（本项目在 server 上实测过 21% 的失败率）。工作线程在跑测试前会**让出串口**，
+跑完再接回来。
+
+单项也可以直接从命令行跑（**同一条路径**，结果可比）：
+
+```bash
+litearm-bench single                              # 列出全部单项
+litearm-bench single --item gcheck --go           # 跑其中一项
+litearm-bench single --item cart_arc --go         # 笛卡尔圆弧（浸泡里 4.5% 失败率的复现入口）
+```
+
 ## 落盘的三层数据
 
 寿命不同，所以分开存：
@@ -88,6 +116,8 @@ litearm-benchmark  ──依赖──>  litearm-core          （USB CDC 直连�
 | `tests/test_registry_and_score.py` | 指标曲线合规（锚点升序/分数界/单调方向）· 未实测≠0 · 自证闸 · 激励闸 · **负控：故意造坏曲线与假自证量，判据必须红** |
 | `tests/test_signals_and_align.py` | 量化地板按**方差**扣除 · 巡航段取**最长连续**段（负控：末尾尖峰不许污染）· 抖动用**直线拟合残差** · seq 回绕与"可比对数" · 对齐找回已知时延 · **负控：两条无关的流必须判不可信** · δ 顶窗检测 |
 | `tests/test_pipeline_offline.py` | 桩传输端到端（跑→分析→打分→落盘）· **仿真不出总分** · 重放与当时一致 · 含人工的档位拒绝非交互运行 |
+| `tests/test_singles.py` | 单项都在安全包线内且过得了闸 · `run_actions` 与档位**同一条路径** · 人工步骤的 prompt 钩子与 skip 默认值 |
+| `tests/test_gui_smoke.py` | 界面无头构造（offscreen）· 两个清单与动作表逐项对齐 · **成绩单渲染三条硬规矩**（仿真不出总分 / 未实测带理由） |
 | `tests/test_version_sync.py` | `pyproject.toml` 与 `__init__.py` 的版本号必须一致（家族惯例） |
 
 ```bash
@@ -112,7 +142,8 @@ src/litearm_benchmark/
   score.py          原始值 → 指标分 → 维度分 → 总分/等级（纯函数）
   report.py         Markdown 成绩单 + CSV + 三层落盘
   replay.py         离线重放与两次运行对比（不动硬件）
-  suites/           档位（动作是数据）与执行器
+  suites/           动作表（**数据**）：tiers.py 档位 / singles.py 单项，执行器只有一份
+  gui/              PyQt5 界面（bridge / worker / widgets / main_window）—— 只是另一个前端
   cli.py            命令行（argparse，家族风格）
 ```
 

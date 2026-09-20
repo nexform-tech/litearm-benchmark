@@ -30,7 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
                "  litearm-bench score --dir docs/bench_20260920_2100_quick\n"
                "  litearm-bench compare --a docs/runA --b docs/runB\n")
     ap.add_argument("action", nargs="?", default="status",
-                    choices=["status", "list", "doctor", "run", "score", "compare"],
+                    choices=["status", "list", "doctor", "run", "single", "gui",
+                             "score", "compare"],
                     help="要做什么（默认 status）")
     ap.add_argument("--tier", default="standard",
                     choices=["quick", "standard", "full", "manual_load"],
@@ -39,6 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="机械臂 CDC 串口（如 /dev/ttyACM0）。缺省按 VID:PID 1d50:606f 自动查找")
     ap.add_argument("--out", default=None,
                     help="落盘目录（默认 docs/bench_<日期>_<时刻>_<档位>）")
+    ap.add_argument("--item", default=None,
+                    help="single：单项的 key（不给则列出全部可选）")
     ap.add_argument("--dir", default=None, help="score：要重算的 run 目录")
     ap.add_argument("--a", dest="dir_a", default=None, help="compare：基准 run 目录")
     ap.add_argument("--b", dest="dir_b", default=None, help="compare：对照 run 目录")
@@ -78,6 +81,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if act == "run":
         return _cmd_run(args)
+
+    if act == "single":
+        return _cmd_single(args)
+
+    if act == "gui":
+        from .gui.app import main as gui_main
+        return gui_main([])
 
     if act == "score":
         if not args.dir:
@@ -130,6 +140,49 @@ def _cmd_run(args) -> int:
               interactive=not args.no_interactive, on_log=log)
     _print_card(res.card, quiet=args.quiet)
     print(f"\n落盘：{outdir}（trace.npz / raw.json / metrics.csv / REPORT.md）")
+    return 0
+
+
+def _cmd_single(args) -> int:
+    """跑**单个测试项** —— 与 `run` 走同一条装配路径（`session.run_actions`）。
+
+    ⚠ 不给 `--item` 时只**列出**可选项；给了也要 `--go` 才真跑（同 `run` 的规矩）。
+    """
+    from .suites import singles as _singles
+
+    if not args.item:
+        print("# 可选单项（用 `--item <key>` 跑其中一项）")
+        print(_singles.describe())
+        print("\n确认后加 `--go` 真跑；或加 `--dry-run` 走离线桩。")
+        return 0
+    if args.item not in _singles.SINGLES:
+        sys.exit(f"未知单项 {args.item!r}；可选 {sorted(_singles.SINGLES)}")
+    it = _singles.SINGLES[args.item]
+
+    if not args.go and not args.dry_run:
+        print(f"⚠ 单项 **{it.title}** 会**动真机**。将要执行的动作：")
+        for a in it.actions:
+            t = f" → {a.target}" if a.target else ""
+            v = f"（每轮先经 {a.via}）" if a.via else ""
+            print(f"  · {a.kind}　{a.label}{t}{v}" + (f" ×{a.reps}" if a.reps > 1 else ""))
+        print("\n确认无误后加 `--go` 重跑；或加 `--dry-run` 走离线桩。")
+        return 1
+    if any(a.is_manual for a in it.actions) and args.no_interactive:
+        sys.exit(f"单项 {args.item!r} 含需人工介入的动作，与 --no-interactive 冲突")
+
+    from .session import run_actions
+    outdir = args.out or os.path.join("docs", f"bench_{_stamp()}_{args.item}")
+
+    def log(m: str) -> None:
+        if not args.quiet:
+            print(m, flush=True)
+
+    print(f"litearm-benchmark {__version__}　单项 {it.title}　输出 {outdir}")
+    res = run_actions(it.actions, label=args.item, port=args.port, outdir=outdir,
+                      dry_run=args.dry_run, interactive=not args.no_interactive,
+                      on_log=log)
+    _print_card(res.card, quiet=args.quiet)
+    print(f"\n落盘：{outdir}")
     return 0
 
 

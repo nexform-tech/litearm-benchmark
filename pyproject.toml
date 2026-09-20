@@ -23,9 +23,13 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+#: 界面是**可选**的：`litearm_benchmark.gui` 里的 PyQt5 都是**懒加载**（在函数体内 import），
+#: 不装它命令行与库用法完全不受影响。版本下限对齐兄弟工程 `litearm-tool-stm32`。
+gui = ["PyQt5>=5.15", "pyserial>=3.5"]
 
 [project.scripts]
 litearm-bench = "litearm_benchmark.cli:main"
+litearm-bench-gui = "litearm_benchmark.gui.app:main"
 
 [tool.setuptools]
 include-package-data = false

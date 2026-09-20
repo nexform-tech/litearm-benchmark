@@ -70,13 +70,18 @@ class Executor:
     """把 :class:`Action` 列表跑成 :class:`Segment` 列表 + 采集数据。"""
 
     def __init__(self, session, capture, *, interactive: bool = True,
-                 log: Optional[Callable[[str], None]] = None):
+                 log: Optional[Callable[[str], None]] = None,
+                 prompt: Optional[Callable[[str], str]] = None):
         self.s = session
         self.cap = capture
         self.arm = session.arm
         self.trace = capture.trace
         self.interactive = interactive
         self._log = log or (lambda m: None)
+        #: 人工步骤的应答口。给了它就用它（界面把提示弹成对话框），否则退回
+        #: 交互式终端的 `input()`。返回 ``"skip"`` 表示跳过该步。
+        #: ⚠ 它会被**工作线程**调用并阻塞到操作者应答 —— 界面侧必须自己做线程交接。
+        self.prompt = prompt
         self.segments: List[Segment] = []
         self.reconnects = 0
 
@@ -554,7 +559,14 @@ class Executor:
         if not self.interactive:
             self._log(f"  ⏭ 需人工动作被跳过（非交互）：{a.manual_hint or a.label}")
             return
-        print(f"\n{'='*68}\n【需人工】{a.manual_hint or a.label}\n{'='*68}")
+        hint = a.manual_hint or a.label
+        if self.prompt is not None:                       # 界面路径：弹对话框
+            if str(self.prompt(hint)).strip().lower() == "skip":
+                self._log(f"  ⏭ 人工步骤被跳过：{a.label}")
+                return
+            self._mark_rest(a.label or "manual", None)
+            return
+        print(f"\n{'='*68}\n【需人工】{hint}\n{'='*68}")
         print("（完成并确认设备已恢复后按回车继续；输入 s 跳过本步）", flush=True)
         try:
             ans = input("> ").strip().lower()

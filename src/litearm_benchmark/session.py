@@ -95,10 +95,28 @@ class BenchSession:
     # ------------------------------------------------------------------ #
     def run_tier(self, tier: str = _tiers.DEFAULT_TIER, *,
                  interactive: bool = True, outdir: Optional[str] = None,
-                 on_log=None) -> RunResult:
-        actions = _tiers.actions_of(tier)
+                 on_log=None, on_prompt=None) -> RunResult:
+        """跑一个**档位** —— 动作表与挂钟预算都取自 :mod:`.suites.tiers`。"""
+        return self.run_actions(_tiers.actions_of(tier), label=tier,
+                                budget=_tiers.budget_of(tier),
+                                interactive=interactive, outdir=outdir,
+                                on_log=on_log, on_prompt=on_prompt)
+
+    def run_actions(self, actions, *, label: str = "custom",
+                    budget: Optional[int] = None,
+                    interactive: bool = True, outdir: Optional[str] = None,
+                    on_log=None, on_prompt=None) -> RunResult:
+        """跑**任意一组动作**。
+
+        ⚠ **档位与"单项"必须走这同一条装配路径** —— 本家族最忌讳"GUI/单项自己
+        另起一套采集与分析"。分叉之后两边测出来的东西就不再可比，而可比性正是
+        这个基准的全部价值。`run_tier` 只是它带上档位动作表的一个薄包装。
+
+        `budget` 是**截断死线**（秒），超了就停跑剩余动作；`None` = 不限。
+        """
+        actions = list(actions)
         if any(a.is_manual for a in actions) and not interactive:
-            raise RuntimeError(f"档位 {tier!r} 含需人工介入的动作，但当前是**非交互**模式 ⇒ 拒绝执行")
+            raise RuntimeError(f"{label!r} 含需人工介入的动作，但当前是**非交互**模式 ⇒ 拒绝执行")
 
         skipped: List[str] = []
         with DualCapture(self.arm) as cap:
@@ -106,11 +124,12 @@ class BenchSession:
             st0 = self.arm.get_state(refresh=False).value
             if st0 is not None:
                 cap.trace.meta["flag_names"] = list(getattr(st0, "flag_names", ()) or ())
-            cap.trace.meta["tier"] = tier
+            cap.trace.meta["tier"] = label
             # ⚠ 把"这是仿真数据"刻进 trace：报告与**重放**都要靠它拒绝出总分
             cap.trace.meta["simulated"] = bool(self.dry_run)
-            ex = Executor(self, cap, interactive=interactive, log=on_log)
-            ex.run(actions, deadline=_deadline(_tiers.budget_of(tier)))
+            ex = Executor(self, cap, interactive=interactive, log=on_log,
+                          prompt=on_prompt)
+            ex.run(actions, deadline=_deadline(budget))
             segs = list(ex.segments)
             cap.trace.meta["reconnects"] = ex.reconnects
 
@@ -136,7 +155,7 @@ class BenchSession:
         if outdir:
             from .report import save_run
             save_run(outdir, trace=cap.trace, raw=raw, card=card,
-                     extra={"tier": tier, "segments": [_seg_dump(s) for s in segs]})
+                     extra={"tier": label, "segments": [_seg_dump(s) for s in segs]})
         return res
 
 
@@ -199,10 +218,30 @@ def _seg_dump(s: Segment) -> Dict[str, object]:
 # --------------------------------------------------------------------------- #
 def run(tier: str = _tiers.DEFAULT_TIER, *, port: Optional[str] = None,
         outdir: Optional[str] = None, dry_run: bool = False,
-        interactive: bool = True, on_log=None) -> RunResult:
+        interactive: bool = True, on_log=None, on_prompt=None) -> RunResult:
     """一次完整基准运行。``outdir`` 给了就落盘（三层：npz/json/md）。"""
     if outdir is None:
         stamp = time.strftime("%Y%m%d_%H%M")
         outdir = os.path.join("docs", f"bench_{stamp}_{tier}")
     with BenchSession(port, dry_run=dry_run) as s:
-        return s.run_tier(tier, interactive=interactive, outdir=outdir, on_log=on_log)
+        return s.run_tier(tier, interactive=interactive, outdir=outdir, on_log=on_log,
+                          on_prompt=on_prompt)
+
+
+def run_actions(actions, *, label: str = "custom", budget: Optional[int] = None,
+                port: Optional[str] = None, outdir: Optional[str] = None,
+                dry_run: bool = False, interactive: bool = True,
+                on_log=None, on_prompt=None) -> RunResult:
+    """跑**单个测试项**（任意一组动作）—— 与 :func:`run` **同一条装配路径**。
+
+    ⚠ 这条路径存在的意义是**别让 GUI/单项另起一套**：分叉之后两边测出来的东西
+    就不再可比，而可比性正是这个基准的全部价值。安全闸（`preflight` / `_gate`）
+    在 `BenchSession` 与 `Executor` 里，**一视同仁**。
+    """
+    if outdir is None:
+        stamp = time.strftime("%Y%m%d_%H%M")
+        outdir = os.path.join("docs", f"bench_{stamp}_{label}")
+    with BenchSession(port, dry_run=dry_run) as s:
+        return s.run_actions(actions, label=label, budget=budget,
+                             interactive=interactive, outdir=outdir,
+                             on_log=on_log, on_prompt=on_prompt)
