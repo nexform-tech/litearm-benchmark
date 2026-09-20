@@ -225,6 +225,9 @@ class Executor:
         if kind == "gcheck":
             self._gcheck(a)
             return
+        if kind == "drift_ref":
+            self._drift_ref(a)
+            return
         raise ValueError(f"未知动作类型 {kind!r}")
 
     def _joint(self, a: Action) -> None:
@@ -492,6 +495,49 @@ class Executor:
             self._log(f"  gcheck {key}: 采到 {len(q)} 轴读数（判据在分析层按 fc0/fc1 筛）")
         if samples:
             self.trace.meta["g_samples"] = samples
+
+    #: 首尾同点位对照用的固定位形 —— 取 `bench`（舒展、非奇异、J4 居中）。
+    #: ⚠ 两次必须用**同一个**位形，否则量到的是位形差不是漂移。
+    DRIFT_POSE = "bench"
+
+    def _drift_ref(self, a: Action) -> None:
+        """记一次**同点位**的落点快照，供 `endur.static_drift_mrad` 前后对比。
+
+        ⚠ 这条指标此前**没有任何数据来源**：`trace.meta['static_drift_mrad']` 全仓
+        **没有写入点**，而它的 skip 理由却写着「需 manual/完整档」—— 实际跑哪档都测不到。
+        现在由本动作在**每个档的首尾各做一次**（分析层取 `refs[0]` 与 `refs[-1]`）。
+
+        ⚠ 快照取**多帧均值**：单帧受编码器量化（LSB 0.096 mrad）限制，
+        而漂移要量的正是 mrad 量级的变化。
+        """
+        label = a.label or "drift_ref"
+        tgt = self._pose(self.DRIFT_POSE)
+        self._gate(tgt, f"{label}@{self.DRIFT_POSE}")
+        try:
+            self.arm.movej(tgt, speed=a.speed)
+        except Exception as exc:                          # noqa: BLE001
+            self._log(f"  ⚠ 漂移基准 {label}: 运动失败 {exc!r} ⇒ 本次不记")
+            return
+        if not self._at_rest():
+            self._log(f"  ⚠ 漂移基准 {label}: 没等到稳态 ⇒ 本次不记"
+                      f"（用瞬态读数会把漂移算错，本项目明确记录过）")
+            return
+        qs = []
+        for _ in range(10):                               # 10 帧 @~50Hz ⇒ 压掉量化噪声
+            try:
+                qs.append(self._q())
+            except Exception:                             # noqa: BLE001 - 读不到就少一帧，不中断
+                pass
+            time.sleep(0.02)
+        if len(qs) < 4:
+            self._log(f"  ⚠ 漂移基准 {label}: 只采到 {len(qs)} 帧 ⇒ 本次不记")
+            return
+        qm = np.asarray(qs, float).mean(axis=0)
+        refs = self.trace.meta.setdefault("drift_refs", [])
+        refs.append({"label": label, "t": time.monotonic(),
+                     "q": [float(v) for v in qm],
+                     "target": [float(v) for v in tgt], "n": len(qs)})
+        self._log(f"  漂移基准 {label}: 已记（{self.DRIFT_POSE}，{len(qs)} 帧均值）")
 
     def _manual(self, a: Action) -> None:
         if not self.interactive:

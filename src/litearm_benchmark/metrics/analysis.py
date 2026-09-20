@@ -318,7 +318,8 @@ def _tracking(r: RawResult, trace, segs) -> None:
 
 # ============================== C. 动态响应 ================================= #
 def _dynamic(r: RawResult, trace, segs) -> None:
-    ovs, rbs, sts, rises = [], [], [], []
+    ovs, rbs, sts = [], [], []
+    rises = []                                   # (指令速度, 上升时间 ms) 对
     for s in segs:
         if s.kind not in ("movej", "movej_sync") or not s.target:
             continue
@@ -340,7 +341,7 @@ def _dynamic(r: RawResult, trace, segs) -> None:
             sts.append(st)
         rt = S.rise_time(t, q[:, j], float(q0[j]), float(tgt[j]), float(t[0]))
         if np.isfinite(rt):
-            rises.append(rt * 1000.0)
+            rises.append((float((s.extra or {}).get("speed") or 0.0), rt * 1000.0))
 
     def put(key, arr, ev):
         if arr:
@@ -351,7 +352,26 @@ def _dynamic(r: RawResult, trace, segs) -> None:
     put("dyn.overshoot_mrad", ovs, "各段越峰的中位数（逐段取主运动轴，对**指令目标**取）")
     put("dyn.rebound_mrad", rbs, "各段回摆的中位数（峰值后往回收的幅度，恒 ≥0）")
     put("dyn.settle_s", sts, "各段整定时间中位数（进入 |q−目标| ≤ 10 mrad 并保持）")
-    put("dyn.rise_ms", rises, "各段 10%→90% 行程时间中位数")
+
+    # ⚠⚠ `dyn.rise_ms` **必须同档比** —— 它的出处自己就写着「换速度档会成比例变化
+    #    ⇒ 必须同档比」。而旧实现**跨所有速度段取一个中位数** ⇒ 量到的主要是
+    #    「命令速度有多慢」，而不是这台臂的响应快慢（真机：同一批数据里 0.3 档与
+    #    1.0 档的上升时间差好几倍，混在一起中位数只反映段数最多的那一档）。
+    #    ⇒ 按段的**指令速度**分组，只报**最快档**的中位数（跨运行可比），
+    #    并把各档分布一并写进证据（换档时能直接看出比例关系）。
+    if rises:
+        by_sp: Dict[float, List[float]] = {}
+        for sp, v in rises:
+            by_sp.setdefault(sp, []).append(v)
+        top = max(by_sp)
+        spread = "、".join(f"speed={sp:g}: {np.median(v):.0f} ms（{len(v)} 段）"
+                          for sp, v in sorted(by_sp.items()))
+        r.set("dyn.rise_ms", float(np.median(by_sp[top])),
+              evidence=f"**最快档**（speed={top:g}）的 10%→90% 行程时间中位数。"
+                       f"⚠ **只同档比** —— 它随指令速度成比例变化。各档实测：{spread}")
+        r.notes["dyn.rise_ms"] = f"共 {len(by_sp)} 个速度档参与；只报最快档"
+    else:
+        r.skip("dyn.rise_ms", "没有可用的关节运动段")
 
 
 # ============================ D. 平滑度与抖动 =============================== #
@@ -687,21 +707,45 @@ def _thermal(r: RawResult, trace) -> None:
 # ============================== I. 耐久 ==================================== #
 def _endurance(r: RawResult, trace) -> None:
     if trace.seq.size > 5:
-        gap, pairs = S.seq_reconcile(trace.seq, trace.t_status, I.STATUS_HZ.value)
+        gap, pairs = S.seq_reconcile(trace.seq)
         r.set("endur.seq_gap", gap,
-              evidence=f"16-bit seq 与步长对账（取模 65536）；**可比 {pairs} 对**"
+              evidence=f"相邻两帧收到的 `seq` 之差 − 1 的最大值（取模 65536）—— "
+                       f"**只量固件丢帧，不掺主机读取节奏**；**可比 {pairs} 对**"
                        + ("（⚠ 0 对 ⇒ 这条判据什么都没证明）" if pairs == 0 else ""))
         r.notes["endur._seq_pairs"] = str(pairs)
     else:
         r.skip("endur.seq_gap", "状态帧太少")
     r.set("endur.reconnects", float(trace.meta.get("reconnects", 0)),
           evidence="运行期间观察到的意外重连次数（期望恒 0）")
-    d = trace.meta.get("static_drift_mrad")
-    if d is not None:
-        r.set("endur.static_drift_mrad", float(d),
-              evidence="长时间运行前后**同一点位**的静差变化（会把热漂/参数漂/松动混在一起）")
+    # ⚠ 快照由 suite 的 `drift_ref` 动作在**首尾各记一次**（同一固定位形、多帧均值）。
+    #   旧实现只读 `trace.meta['static_drift_mrad']`，而**全仓没有任何写入点** ——
+    #   它不是"要跑某个档才有"，是**一条从来没有数据来源的指标**。
+    refs = trace.meta.get("drift_refs") or []
+    if len(refs) >= 2:
+        a0, a1 = refs[0], refs[-1]
+        q0 = np.asarray(a0.get("q") or [], float)
+        q1 = np.asarray(a1.get("q") or [], float)
+        t0 = np.asarray(a0.get("target") or [], float)
+        t1 = np.asarray(a1.get("target") or [], float)
+        if q0.size and q0.shape == q1.shape == t0.shape == t1.shape:
+            d0 = (q0 - t0) * 1000.0
+            d1 = (q1 - t1) * 1000.0
+            drift = np.abs(d1 - d0)
+            j = int(np.argmax(drift))
+            gap = float(a1.get("t", 0.0)) - float(a0.get("t", 0.0))
+            r.set("endur.static_drift_mrad", float(drift[j]),
+                  evidence=f"首（{a0.get('label')}）尾（{a1.get('label')}）**同一点位**的"
+                           f"静差**之差**，逐轴取最大 —— 最差 J{j+1}："
+                           f"{d0[j]:+.3f} → {d1[j]:+.3f} mrad；两次间隔 {gap:.0f} s。"
+                           f"⚠ 它把**热漂 / 参数漂 / 机械松动**三者混在一起 ⇒ 只作提示",
+                  note=f"各轴 |Δ静差| mrad：{np.round(drift, 3).tolist()}")
+        else:
+            r.skip("endur.static_drift_mrad", "首尾快照的轴数/目标不一致 ⇒ 不可比")
+    elif refs:
+        r.skip("endur.static_drift_mrad",
+               f"只记到 {len(refs)} 次同点位快照（需要 2 次才能比）")
     else:
-        r.skip("endur.static_drift_mrad", "本档未做首尾同点位对照（需 manual/完整档）")
+        r.skip("endur.static_drift_mrad", "本档未记到同点位快照（`drift_ref` 动作没跑到）")
 
 
 # =============================== J. 安全 =================================== #

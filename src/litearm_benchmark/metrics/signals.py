@@ -238,27 +238,29 @@ def rise_time(t: np.ndarray, q: np.ndarray, q_from: float, q_to: float,
 # 状态帧序号对账
 # --------------------------------------------------------------------------- #
 
-def seq_reconcile(seq: Sequence[int], t: Sequence[float], nominal_hz: float = 100.0,
-                  tol_frames: float = 2.0):
-    """用 16-bit `seq` 与步长对账，返回 ``(最大缺口帧数, 可比对数)``。
+def seq_reconcile(seq: Sequence[int]):
+    """逐帧对账 16-bit `seq`，返回 ``(最大连续**丢失**帧数, 可比对数)``。
+
+    ⚠⚠ **判据必须是「相邻两帧收到的 `seq` 之差 − 1」，不是「dt × 标称频率」。**
+
+    旧实现按后者算，于是把**主机没读**的那段时间也当成"本该有帧" ⇒ 量到的是
+    **主机的读取节奏**，而不是固件丢帧。真机实测（2026-09-21，`full` 档）：
+    `seq` 首末差 24383、收到 24384 帧 ⇒ **固件一帧没丢**，而旧算法报出
+    **37.46 帧**、判 11 分（**假红**）。那几处"缺口"全部是 `Δseq=1` 但
+    `dt≈300ms` 的对 —— 正是 `_at_rest()` 每 300ms 才读一次的位置。
+    固件的状态帧是**被动**的：主机不读，它就基本不发 ⇒ `dt` 根本不该参与丢帧判定。
 
     ⚠ **必须同时报「可比对数」**：只有 0 对时不能说"没有缺口" —— 那与"没有数据"是
     同一句话（本项目记录过"计数器恒 0"被读成"没出错"的教训）。
 
     `seq` 是 16-bit 计数器会回绕，故增量一律取 ``(b−a) mod 65536``。
     """
-    seq = list(int(s) for s in seq)
-    t = list(float(x) for x in t)
-    worst, pairs = 0.0, 0
+    seq = [int(s) for s in seq]
+    worst, pairs = 0, 0
     for i in range(1, len(seq)):
-        dt = t[i] - t[i - 1]
-        if dt <= 0 or dt > 1.0:        # 间隔过大的那对不可比（可能重连）
-            continue
-        expect = dt * nominal_hz
-        got = (seq[i] - seq[i - 1]) % 65536
-        gap = abs(got - expect)
-        if gap > 65536 / 2:            # 反向回绕
-            gap = 65536 - gap
-        worst = max(worst, gap)
+        d = (seq[i] - seq[i - 1]) % 65536
+        if d == 0:
+            continue                   # 同一帧被读了两遍（正常实现里不该发生）⇒ 不计
         pairs += 1
+        worst = max(worst, d - 1)
     return float(worst), pairs

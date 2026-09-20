@@ -51,21 +51,34 @@ def test_fit_line_residual_ignores_linear_drift():
     assert np.std(drift + noise) > 2e-3, "负控失效：不拟合时 std 本该很大"
 
 
-def test_seq_reconcile_wraps_and_reports_pair_count():
-    """16-bit `seq` 会回绕；且**必须报「可比对数」** —— 0 对时不能判绿。"""
-    t = [0.0, 0.01, 0.02, 0.03]
-    # ⚠ 回绕序列必须**逐帧连续**才叫"没有缺口"：`65531 -> 0` 中间跳了 4 帧，
-    #   判它 gap=4 是**对的**（我第一版把测试数据写错了，反过来怪实现）。
-    seq = [65534, 65535, 0, 1]
-    gap, pairs = S.seq_reconcile(seq, t, 100.0)
-    assert pairs == 3
-    assert gap < 1.5, f"回绕没处理：gap={gap}"
-    # 负控：真的漏一帧必须被量出来
-    gap2, _ = S.seq_reconcile([10, 11, 13, 14], t, 100.0)   # 中间漏了 1 帧
-    assert gap2 > 0.5, f"漏帧没被量出来：gap={gap2}"
-    # 0 对的情形：间隔过大一律不可比
-    _g, p0 = S.seq_reconcile([1, 2], [0.0, 5.0], 100.0)
-    assert p0 == 0, "间隔 5s 的一对本不该可比"
+def test_seq_reconcile_counts_lost_frames_and_reports_pair_count():
+    """16-bit `seq` 会回绕；判据是「Δseq − 1」，**必须同报「可比对数」**（0 对不能判绿）。"""
+    # 回绕：必须**逐帧连续**才叫"没丢"
+    gap, pairs = S.seq_reconcile([65534, 65535, 0, 1])
+    assert pairs == 3 and gap == 0.0, f"回绕没处理：gap={gap}"
+    # 真丢帧：Δseq=2 ⇒ 丢 1 帧；Δseq=4 ⇒ 丢 3 帧
+    assert S.seq_reconcile([10, 11, 13, 14])[0] == 1.0
+    assert S.seq_reconcile([1, 5])[0] == 3.0
+    # 帧太少 ⇒ 0 对（"没有可比对"与"没有缺口"不是同一句话）
+    assert S.seq_reconcile([7])[1] == 0
+
+
+def test_seq_reconcile_ignores_host_read_gaps():
+    """**负控**：主机 0.3s 没读但 `Δseq=1` ⇒ 缺口必须判 **0**。
+
+    固件的状态帧是**被动**的（主机不读它基本不发），所以 `dt` 里那段"没读"的时间
+    **不该**算成"本该有帧"。旧判据（`dt × 100Hz`）在同一份数据上会报 ~30 帧 ——
+    真机实测：`full` 档里 `seq` 差 24383 / 收到 24384 帧（**一帧没丢**），
+    旧算法却报 **37.46 帧、11 分**（假红）；那几处的 `dt` 全是 ~300ms，
+    正好是 `_at_rest()` 每 300ms 读一次的位置。
+    """
+    seq = [1, 2, 3]                       # 逐帧连续
+    gap, pairs = S.seq_reconcile(seq)
+    assert gap == 0.0 and pairs == 2
+
+    # 旧算法（掺 dt）在同一份数据上给出的数：
+    old = abs((seq[1] - seq[0]) % 65536 - 0.30 * 100.0)
+    assert old > 25.0, f"旧算法本该报 ~{old:.1f} 帧 ⇒ 本判据的判别力成立"
 
 
 def test_overshoot_and_rebound_are_different_quantities():

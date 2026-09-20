@@ -19,7 +19,7 @@
 
     from litearm_benchmark import run, rescore, compare
 
-    res = run("quick", outdir="docs/runA")      # ~5 分钟，会动真机
+    res = run("quick", outdir="docs/runA")      # ~1 分钟（实测 58 s），会动真机
     print(res.summary())                        # "87.3/100 等级 A ..."
 
     rescore("docs/runA")                        # 改权重/阈值后重算，不动硬件

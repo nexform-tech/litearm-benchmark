@@ -12,7 +12,7 @@ pip install -e ".[dev]"
 
 litearm-bench list                     # 看四个档位各跑什么
 litearm-bench doctor                   # 环境与口径自检（不动机器人）
-litearm-bench run --tier quick --go    # ~5 分钟，会动真机
+litearm-bench run --tier quick --go    # ~1 分钟（实测 58 s），会动真机
 litearm-bench score --dir docs/bench_.../    # 改权重后重算，不动硬件
 litearm-bench compare --a runA --b runB      # 两次运行逐指标对比
 ```
@@ -37,12 +37,15 @@ litearm-bench compare --a runA --b runB      # 两次运行逐指标对比
 
 ## 档位
 
-| 档位 | 目标时长 | 覆盖 | 人工 |
+| 档位 | **实测挂钟** | 覆盖 | 人工 |
 |---|---|---|---|
-| `quick` | ~5 min | 静差/重复性/跟踪/抖动/看门狗/固件自检 | 无 |
-| `standard` | ~15 min | 加笛卡尔、多轴同步、更多静止位形 | 无 |
-| `full` | ~40 min | 加长时间稳定性、热、多速度档 | 无 |
+| `quick` | **~1 min** | 静差/重复性/跟踪/抖动/看门狗/固件自检 | 无 |
+| `standard` | **~2.5 min** | 加笛卡尔、多轴同步、更多静止位形 | 无 |
+| `full` | **~4 min** | 加长时间稳定性、热、多速度档 | 无 |
 | `manual_load` | 视操作 | 装/拆配重前后的对照 | **需人工** |
+
+> ⚠ 上表是 **2026-09-21 真机实测**（`quick` 58 s、`full` 4 min 11 s）。
+> 早先写的 `~5 / ~15 / ~40 min` 是估的、从未核对，实际高了 6~10 倍。
 
 动作**全是数据**（`suites/tiers.py`），执行器只有一份 —— 加指标时只加一条动作。
 
