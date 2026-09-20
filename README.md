@@ -63,6 +63,13 @@ litearm-bench compare --a runA --b runB      # 两次运行逐指标对比
 | `raw.json` | 算出来的原始值 + 每条的证据/说明 + 机器身份 | 改**权重/阈值**时只需它（`score` / `compare`） |
 | `REPORT.md` / `metrics.csv` | 人看的成绩单与明细 | 每次 rescore 重新生成，**不要手改** |
 
+## 可重复性
+
+[`docs/REPEATABILITY.md`](docs/REPEATABILITY.md) 记了**同一台臂连跑 6 轮**的各指标散布
+（噪声底）。⛔ 它是用来判断"这个差异有没有意义"的，**不能**用来定锚点 ——
+锚点要的是与**机器无关**的参照。里面也记了两条判据的分辨力边界
+（`track.lag_ms` 的 2 ms 格点、`dyn.rise_ms` 的锚点基础有问题）。
+
 ## 依赖关系
 
 ```
