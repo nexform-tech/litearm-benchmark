@@ -315,16 +315,26 @@ class Executor:
                                              extra={"error": repr(exc), "poses": poses}))
                 return
             goal = np.asarray(poses[-1][:3], float)
-            tt, pp, settled = [], [], False
+            tt, pp, settled, err = [], [], False, None
             t_start = time.monotonic()
-            while time.monotonic() - t_start < self.arm.move_timeout:
-                got = self.arm.get_tcp().value
-                if got is not None:
-                    tt.append(time.monotonic()); pp.append(list(got[:3]))
-                if self._tcp_settled(tt, pp, goal):
-                    settled = True
-                    break
-                time.sleep(0.01)
+            try:
+                while time.monotonic() - t_start < self.arm.move_timeout:
+                    got = self.arm.get_tcp().value
+                    if got is not None:
+                        tt.append(time.monotonic()); pp.append(list(got[:3]))
+                    if self._tcp_settled(tt, pp, goal):
+                        settled = True
+                        break
+                    time.sleep(0.01)
+            except Exception as exc:                      # noqa: BLE001
+                # ⚠ **已知的固件缺陷**：笛卡尔路径偶发**多余的 `0x4E` 应答**
+                #   （core 判"应答比请求多、主机与固件已错配"并抛错）。
+                #   6 小时浸泡实测 **4/89 = 4.5%**，且**全部**落在笛卡尔段。
+                #   ⇒ 那是**被测系统的缺陷**，不该让整轮基准崩掉 —— 记进段里、继续跑。
+                #   校验一下：`docs/soak_20260921_0108_full/soak.json` 的 4 条失败记录
+                #   全是这一个错误。**要修的是固件/host 的笛卡尔应答配对，不是这里。**
+                err = repr(exc)
+                self._log(f"  ⚠ {label} 采样出错（记为被测系统缺陷，本轮继续）：{exc!r}")
             t1 = time.monotonic()
             dev_mm = (float(np.linalg.norm(np.asarray(pp[-1], float) - goal) * 1000.0)
                       if pp else None)
@@ -335,7 +345,8 @@ class Executor:
                                      extra={"plan_us": getattr(plan, "plan_us", None),
                                             "n_wp": getattr(plan, "n_wp", None),
                                             "settled": settled, "n_tcp": len(pp),
-                                            "dev_mm": dev_mm, "poses": poses}))
+                                            "dev_mm": dev_mm, "poses": poses,
+                                            **({"error": err} if err else {})}))
         self._log(f"  {label}: {a.kind} n_wp={getattr(plan,'n_wp',None)} "
                   f"plan_us={getattr(plan,'plan_us',None)} settled={settled} "
                   f"tcp采样={len(pp)} 到位偏差="

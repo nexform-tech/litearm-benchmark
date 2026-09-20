@@ -1,20 +1,17 @@
-"""`smooth.jerk_spike_ratio` 的 `|Δv|` **必须在巡航段之内取**。
+"""`smooth.jerk_spike_ratio` —— 取值域与**分母**都必须选对。
 
-2026-09-20 真机：这条指标每档都判未实测，理由是「巡航段太抖导致 median|Δv|=0」。
-查下去发现根因是**取值域错了** —— 旧实现在**整个 chunk** 上取 `np.diff(v)`，
-而一个动作 chunk 里**大部分拍是静止段**（那一段 v≡0 ⇒ Δv≡0）⇒ 中位数被它们拉到 0
-⇒ `med > 0` **恒假**。
+这条指标错过两次，两次都是"判据在拿一个不稳定的东西当尺度"：
 
-真机实测对照（`standard` 档）：
+① **取值域**：`|Δv|` 要在**巡航段之内**取。取整个 chunk 的话，chunk 里大部分拍是
+   静止段（Δv≡0）⇒ 统计量被拉垮 ⇒ 恒判未实测。
 
-| chunk | 速度档 | 整段 med\\|Δv\\| | **巡航段内** med\\|Δv\\| | max/med |
-|---|---|---|---|---|
-| 3 | 1.0 | **0.000000** | 0.008002 | **3.33** |
-| 5 | 0.5 | 0.000000 | **0.000000** | 分母无定义 |
+② **分母**（6 小时浸泡才发现）：旧口径用 `max|Δv| / median|Δv|`，而 `median|Δv|`
+   的**量级由参考平滑到什么程度决定** —— 参考越平滑它越接近 **f32 舍入噪声**。
+   真机实测它低到 **3.143e-07**，比值爆到 **47722**；而同一批数据里**物理行为完全
+   相同**的段只给 **1.4**（跨 34000×）。85 轮 `full` **每一次都因此判 0 分（假红）**。
 
-⇒ 修好后 1.0 档**出得来数**；而 0.5 档**仍**无定义 —— 那是判据的分辨力边界
-（参考在巡航段严格线性时，分母恰为 0），必须与"取值域错"分开对待：
-前者是**如实剔除**，后者是**实现 bug**。
+   ⇒ 换成分母 = **巡航速度**：`max|Δv| / |v|_cruise`，即「最大单拍速度变化占巡航
+   速度的比例」。参考越平滑它**越小**（正确方向），真机实测稳定在 0.0103~0.0212。
 """
 
 import numpy as np
@@ -26,82 +23,98 @@ from litearm_benchmark.metrics import signals as S
 from litearm_benchmark.metrics.analysis import RawResult, Segment, _smoothness
 
 N = 7
+DT = I.CTRL_DT.value
 
 
-def _trace_with_one_ramp(*, ramp_variation: float):
-    """一条 chunk：静止 → 巡航（带微小逐拍变化）→ 静止。
+def _ramp_trace(*, spike: bool, n: int = 300):
+    """一条 chunk：静止 → 巡航 → 静止。
 
-    `ramp_variation=0` ⇒ 参考在巡航段**严格线性**（Δv≡0，分母无定义）；
-    给个小量 ⇒ 巡航段内 Δv≠0（可测）。
+    巡航段由**逐拍累加**得到，并按 `float32` 存 —— 这**忠实复现**了真机上
+    `median|Δv|` 落进 f32 舍入噪声的机制（那正是旧口径爆掉的原因）。
+    `spike=True` 时在某一拍让速度**真的**突跳一次。
     """
-    n = 300
-    q = np.zeros((n, N))
-    v = 0.30                                     # rad/s 的巡航速度
-    dt = I.CTRL_DT.value
-    pos = 0.0
+    v = 1.0                                   # rad/s 的巡航速度
+    pos = np.float32(0.0)
+    q = np.zeros((n, N), dtype=np.float32)
     for k in range(n):
+        step = np.float32(0.0)
         if 80 <= k < 220:
-            # ⚠ 调制**不能用逐拍 `±e` 交替** —— 那在 `np.gradient` 的中心差分里
-            #   会正好抵消（`step_k + step_{k+1} = 2v·dt` 恒定），速度反而完全不变，
-            #   于是"巡航段内 Δv≠0"这个前提根本不成立（本测试第一版就踩了这个）。
-            step = v * dt * (1.0 + ramp_variation * np.sin(k * 0.9))
-            pos += step
-            q[k, 0] = pos
-        else:
-            q[k, 0] = pos                        # 静止段：位置不变 ⇒ v≡0 ⇒ Δv≡0
+            step = np.float32(v * DT)
+            if spike and k == 150:
+                step = np.float32(step + 0.30 * DT)   # 一拍内速度突跳 0.30 rad/s
+        pos = np.float32(pos + step)
+        q[k, 0] = pos
     tr = Trace()
-    tr.chunks = [LogChunk(tick=np.arange(n, dtype=np.int64), q_ref=q,
+    tr.chunks = [LogChunk(tick=np.arange(n, dtype=np.int64), q_ref=q.astype(float),
                           dq_ref=np.zeros((n, N)), tau=np.zeros((n, N)), label="c0")]
-    tr.q = np.asarray([[0.0] * N])               # 静止段用；随便给一行
+    tr.q = np.asarray([[0.0] * N])
     tr.t_status = np.zeros(1)
     seg = Segment("ramp", "movej", 0.0, 1.0, target=[0.0] * N, chunk=0, travel_rad=0.5)
     return tr, [seg]
 
 
-def _compute(variation):
-    tr, segs = _trace_with_one_ramp(ramp_variation=variation)
+def _run(**kw):
+    tr, segs = _ramp_trace(**kw)
     r = RawResult()
     _smoothness(r, tr, segs, identity={}, excited=True)
     return r, tr
 
 
-def test_jerk_is_taken_within_the_cruise_segment_not_the_whole_chunk():
-    """**正控**：巡航段内 Δv≠0 时，这条指标**必须出得来数**。
+def _old_ratio(tr) -> float:
+    """旧口径 `max|Δv| / median|Δv|`（在巡航段之内）—— 用来做负控。
 
-    旧实现（整段取中位数）在同一个输入上会判未实测 —— 见下一条负控。
+    ``median|Δv|`` 恰为 0 时返回 ``inf``（那本身也是"分母退化"的极端形态）。
     """
-    r, _ = _compute(variation=1e-3)
-    v = r.values.get("smooth.jerk_spike_ratio")
-    assert v is not None, f"仍判未实测：{r.notes.get('smooth.jerk_spike_ratio')}"
-    assert np.isfinite(v) and v >= 1.0, f"比值应当 ≥1，得到 {v}"
-    assert "巡航段之内" in r.evidence["smooth.jerk_spike_ratio"]
-
-
-def test_the_whole_chunk_median_would_have_been_zero():
-    """**负控**：证明旧取值域确实会得到 median|Δv|=0 ⇒ 恒判未实测。
-
-    这条是上一条的判别力来源：同一份数据，换取值域就从"有数"变"没数"。
-    """
-    tr, _ = _trace_with_one_ramp(ramp_variation=1e-3)
     _t, qr, _d, _tau = tr.log_arrays(0)
-    v = np.gradient(qr[:, 0], I.CTRL_DT.value)
-
-    whole = float(np.median(np.abs(np.diff(v))))
+    v = np.gradient(qr[:, 0], DT)
     si = S.cruise_segment(v)
-    assert si is not None, "没切出巡航段，测试前提不成立"
-    inside = float(np.median(np.abs(np.diff(v[si[0]:si[1] + 1]))))
-
-    assert whole == 0.0, f"整段中位数本该是 0（静止段占多数），得到 {whole}"
-    assert inside > 0.0, "巡航段内中位数本该 >0"
+    dv = np.abs(np.diff(v[si[0]:si[1] + 1]))
+    med = float(np.median(dv))
+    return float(dv.max() / med) if med > 0 else float("inf")
 
 
-def test_perfectly_linear_cruise_is_reported_as_undefined_not_as_smooth():
-    """**分辨力边界**：参考在巡航段**严格线性**时分母恰为 0 ⇒ **无定义**。
+# --------------------------------------------------------------------------- #
+def test_smooth_reference_scores_low_not_exploded():
+    """**核心负控**：参考平顺时这条指标必须**很小**（好），而不是爆成 1e4。
 
-    ⚠ 必须与"很平滑"分开 —— 分母为 0 时比值**不存在**，
-    报 0 或满分都是把"测不了"说成"很好"。
+    旧口径在**同一份数据**上会给出几万倍 —— 那是 f32 噪声当分母的产物。
     """
-    r, _ = _compute(variation=0.0)
-    assert r.values.get("smooth.jerk_spike_ratio") is None
-    why = r.notes["smooth.jerk_spike_ratio"]
-    assert "无定义" in why and "很平滑" in why
+    r, tr = _run(spike=False)
+    v = r.values.get("smooth.jerk_spike_ratio")
+    assert v is not None, f"不该判未实测：{r.notes}"
+    assert v < 0.05, f"平顺参考给出 {v} —— 分母又落到噪声上了"
+
+    old = _old_ratio(tr)
+    assert old > 10.0, f"旧口径本该爆掉（实测真机到过 47722），这里只给了 {old:.1f}"
+
+
+def test_a_real_one_tick_jump_shows_up():
+    """**正控**：真有一拍速度突跳 ⇒ 必须明显变大。否则这条指标没有判别力。"""
+    r_ok, _ = _run(spike=False)
+    r_bad, _ = _run(spike=True)
+    a = r_ok.values["smooth.jerk_spike_ratio"]
+    b = r_bad.values["smooth.jerk_spike_ratio"]
+    assert b > a * 5, f"突跳没被区分出来：平顺 {a:.4f} vs 突跳 {b:.4f}"
+
+
+def test_perfectly_linear_cruise_is_zero_not_undefined():
+    """**语义**：巡航段严格线性 ⇒ 单拍速度变化恒 0 ⇒ 比值 = **0**（满分）。
+
+    ⚠ 旧口径在这里分母恰为 0 ⇒ **无定义**；新口径分母是巡航速度（>0）⇒ 有定义、
+    且答案是"完美"。**「0」与「无定义」在这一版被分开了。**
+    """
+    tr, segs = _ramp_trace(spike=False)
+    _t, qr, _d, _tau = tr.log_arrays(0)
+    qr = np.round(qr[:, 0], 9)                      # 抹掉 f32 抖动 ⇒ 严格线性
+    qr = qr - qr[0]
+    tr2 = Trace()
+    tr2.chunks = [LogChunk(tick=np.arange(len(qr), dtype=np.int64),
+                           q_ref=np.stack([qr] + [np.zeros_like(qr)] * (N - 1), axis=1),
+                           dq_ref=np.zeros((len(qr), N)), tau=np.zeros((len(qr), N)),
+                           label="c0")]
+    tr2.q = np.asarray([[0.0] * N]); tr2.t_status = np.zeros(1)
+    r = RawResult()
+    _smoothness(r, tr2, segs, identity={}, excited=True)
+    v = r.values.get("smooth.jerk_spike_ratio")
+    assert v is not None and v < 1e-4, \
+        f"严格线性应当判「完美」（比物理地板 0.013 低几个量级），得到 {v}"

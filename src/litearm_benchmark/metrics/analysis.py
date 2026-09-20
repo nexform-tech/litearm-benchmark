@@ -426,16 +426,24 @@ def _smoothness(r: RawResult, trace, segs, identity, *, excited: bool = True) ->
             ts = float(np.std(taul[seg_i[0]:seg_i[1] + 1, j], ddof=1))
             lsb = I.TAU_LSB_NM.get(j + 1)
             tau_sig.append(S.excess_over_floor(ts, S.quant_floor_std(lsb.value)) if lsb else ts)
-            # ⚠⚠ `|Δv|` 必须在**巡航段之内**取。旧实现取的是**整个 chunk**，而一个动作
-            #    chunk 里大部分拍是静止段（那一段 Δv 恒 0）⇒ 中位数被它们拉到 0
-            #   ⇒ `med > 0` **恒假** ⇒ 这条指标在真机上**从来出不了数**
-            #   （真机实测：整段 med|Δv| ≡ 0，而巡航段内是 8.0e-3）。
-            #   ⚠ 但即使修好，**参考在巡航段严格线性**的那些段（实测 0.5 档就是）
-            #   分母仍恰为 0 —— 那是**无定义**，不是"很平滑"，故那段不计、并如实说明。
-            dv = np.abs(np.diff(v[seg_i[0]:seg_i[1] + 1]))
-            med = float(np.median(dv))
-            if med > 0:
-                jerk_spikes.append(float(dv.max() / med))
+            # ⚠⚠⚠ **分母必须是「巡航速度」，不能是「典型的一拍变化量 `median|Δv|`」。**
+            #
+            # 旧口径（`max|Δv| / median|Δv|`）的量级由**参考平滑到什么程度**决定：
+            # 参考越平滑，`median|Δv|` 越接近 **f32 舍入噪声** —— 6 小时浸泡实测它低到
+            # **3.143e-07**，比值随之爆到 **47722**；而同一批数据里**物理行为完全相同**
+            # 的段只给出 **1.4**（跨 34000×）。85 轮 `full` **每一次都因此判 0 分**（假红）。
+            #
+            # ⇒ 换成 `最大单拍速度变化 / 巡航速度`：无量纲、且**参考越平滑它越小**
+            #   （那正是我们要的方向）。真机实测它稳定在 **0.0103~0.0212**，
+            #   其中 ~0.013 是 S 曲线自身的台阶 —— 是个**有物理含义的常数**，不是噪声。
+            #
+            # ⚠ 顺带保留上一轮的教训：`|Δv|` 必须在**巡航段之内**取（取整个 chunk 的话
+            #   静止段会把统计量拉垮）；且巡航速度为 0 时本段不计。
+            seg_v = v[seg_i[0]:seg_i[1] + 1]
+            vc = float(np.median(np.abs(seg_v)))
+            dv = np.abs(np.diff(seg_v))
+            if vc > 0 and dv.size:
+                jerk_spikes.append(float(dv.max() / vc))
 
     if ripples:
         r.set("smooth.vel_ripple_pct", float(np.median(ripples)),
@@ -458,14 +466,14 @@ def _smoothness(r: RawResult, trace, segs, identity, *, excited: bool = True) ->
 
     if jerk_spikes:
         r.set("smooth.jerk_spike_ratio", float(np.median(jerk_spikes)),
-              evidence=f"**巡航段之内** `max|Δv| / median|Δv|` 的中位数（{len(jerk_spikes)} 段可用）；"
+              evidence=f"**巡航段之内** `max|Δv| / 巡航速度` 的中位数（{len(jerk_spikes)} 段可用）"
+                       f"—— 即「最大单拍速度变化占巡航速度的比例」，无量纲；"
                        f"v 用位置差分；**单流指标**、无跨流对齐伪影。"
-                       f"⚠ 只在参考不平直的段上可测 —— 巡航段内 `median|Δv|` 恰为 0 "
-                       f"（参考严格线性）的段**分母无定义**，已剔除")
+                       f"⚠ 分母**必须是巡航速度**：`median|Δv|` 会随参考变平滑而趋近 f32 噪声"
+                       f"（实测低到 3.1e-07），使比值爆到 1e4 量级 —— 那是**判据不稳**，"
+                       f"不是真突跳")
     else:
-        r.skip("smooth.jerk_spike_ratio",
-               "所有巡航段内 `median|Δv|` 都恰为 0 ⇒ 分母无定义（**不是「很平滑」**）—— "
-               "参考在巡航段严格线性时分不出尖峰，这是判据本身的分辨力边界")
+        r.skip("smooth.jerk_spike_ratio", "没有可用的巡航段（或巡航速度为 0）")
 
 
 # ================================ E. 力矩 =================================== #

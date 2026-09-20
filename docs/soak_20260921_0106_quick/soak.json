@@ -1,0 +1,32 @@
+{
+ "config": {
+  "hours": 0.02,
+  "tier": "quick",
+  "port": "/dev/ttyACM0",
+  "max_rounds": 400,
+  "outdir": null
+ },
+ "stop_reason": "",
+ "rounds": [
+  {
+   "round": 1,
+   "ok": true,
+   "seconds": 58.1,
+   "total": 81.20369125849275,
+   "grade": "A",
+   "unmeasured": 6,
+   "t_mos_max": 34.0,
+   "margin": 0.0677377350628376
+  },
+  {
+   "round": 2,
+   "ok": true,
+   "seconds": 57.9,
+   "total": 80.95698514426186,
+   "grade": "A",
+   "unmeasured": 6,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  }
+ ]
+}
