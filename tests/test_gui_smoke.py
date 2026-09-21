@@ -78,6 +78,110 @@ def test_card_view_flags_simulated_data_and_never_shows_a_total(qapp):
     assert res.card.total is None
 
 
+def _fake_port(dev, vid=None, pid=None, product=None):
+    """造一个 pyserial `ListPortInfo` 的替身（只带被测代码真正读的那几个字段）。"""
+    return type("P", (), {"device": dev, "vid": vid, "pid": pid, "product": product})()
+
+
+#: 真实布局：31 个主板串口在前、臂在中段（第 32 位）、后面还跟着一台 USB 调试器。
+#: ⚠ `ttyACM1` 那台 ATK CMSIS-DAP 是**调试器不是臂** —— 按编号猜一定会认错。
+_TTYS = [_fake_port(f"/dev/ttyS{i}") for i in range(31)]
+_LAYOUT = _TTYS + [_fake_port("/dev/ttyACM0", 0x1D50, 0x606F, "STM32 Virtual ComPort"),
+                   _fake_port("/dev/ttyACM1", 0x04D8, 0x00DF, "ATK-FS-HID-CMSIS-DAP")]
+
+
+def test_arm_is_identified_and_sorted_first(monkeypatch):
+    """臂必须被**认出来**（打 ★）并排在第一 —— 不能在 34 条里靠人找。
+
+    ⚠ 守的是一个真实踩过的坑：pyserial 会把 `/dev/ttyACM0` **也列进去**（本机第 32 位）。
+    所以"插到最前"不能写成 `if p not in out: out.insert(0, p)` —— 那个条件恰好恒假。
+    """
+    import serial.tools.list_ports as lp
+    import litearm_core
+
+    from litearm_benchmark.gui.main_window import _list_ports
+
+    monkeypatch.setattr(lp, "comports", lambda: list(_LAYOUT))
+    monkeypatch.setattr(litearm_core, "find_cdc_port", lambda: "/dev/ttyACM0")
+    infos = _list_ports()
+
+    assert infos[0].device == "/dev/ttyACM0", "臂没排到第一位 —— 下拉会默认选中主板串口"
+    assert infos[0].is_arm and "★" in infos[0].label and "1d50:606f" in infos[0].label, \
+        "认出来了却没标出来 —— 界面上看不出哪个是它"
+    # 负控：**只**认那一台。调试器在同一条 USB 总线上、也是 ttyACM，不许被认成臂。
+    assert [i.device for i in infos if i.is_arm] == ["/dev/ttyACM0"], \
+        "把别的 USB 串口也认成臂了"
+    assert infos[0].is_usb, "臂是 USB 设备 ⇒ 默认过滤也必须留着它"
+    # 非 USB 串口仍**在结果里**（过滤是界面的事，取数函数不替调用方决定什么是噪声）
+    assert sum(1 for i in infos if not i.is_usb) == 31
+
+
+def test_unidentified_arm_still_lists_everything(monkeypatch):
+    """**负控**：认不出来时不许抛异常、不许吞掉清单，只是没有 ★。"""
+    import serial.tools.list_ports as lp
+    import litearm_core
+
+    from litearm_benchmark.gui.main_window import _list_ports
+
+    monkeypatch.setattr(lp, "comports", lambda: list(_LAYOUT))
+    monkeypatch.setattr(litearm_core, "find_cdc_port", lambda: None)
+    infos = _list_ports()
+    assert len(infos) == 33, "找不到臂时清单被改动了"
+    assert not any(i.is_arm for i in infos) and not any("★" in i.label for i in infos)
+
+
+def test_arm_found_but_not_listed_by_pyserial_is_still_added(monkeypatch):
+    """认出来了、pyserial 却没列 ⇒ **必须补一条**，否则界面上根本选不到它。"""
+    import serial.tools.list_ports as lp
+    import litearm_core
+
+    from litearm_benchmark.gui.main_window import _list_ports
+
+    monkeypatch.setattr(lp, "comports", lambda: [_fake_port("/dev/ttyS4")])
+    monkeypatch.setattr(litearm_core, "find_cdc_port", lambda: "/dev/ttyACM9")
+    infos = _list_ports()
+    assert infos[0].device == "/dev/ttyACM9" and infos[0].is_arm, "认出来了却选不到"
+
+
+def test_non_usb_ports_are_hidden_by_default_but_reachable(win, monkeypatch):
+    """界面默认**只列 USB 串口**，勾上就全回来 —— 过滤，不是删除。"""
+    import serial.tools.list_ports as lp
+    import litearm_core
+
+    monkeypatch.setattr(lp, "comports", lambda: list(_LAYOUT))
+    monkeypatch.setattr(litearm_core, "find_cdc_port", lambda: "/dev/ttyACM0")
+
+    win._refresh_ports()                                # noqa: SLF001 - 就是被测的刷新
+    assert not win.chk_all.isChecked(), "默认应是隐藏（本机 34 个里 31 个是主板串口）"
+    assert win.port.count() == 2, "默认该只列两台 USB 设备"
+    assert [win.port.itemData(i) for i in range(win.port.count())] == \
+        ["/dev/ttyACM0", "/dev/ttyACM1"], "顺序或取回的设备路径不对"
+    assert win.port.currentData() == "/dev/ttyACM0", "默认选中的不是臂"
+    assert "已识别 LiteArm" in win.lbl_note.text(), "没告诉操作者识别结果"
+
+    win.chk_all.setChecked(True)
+    assert win.port.count() == 33, "勾上后非 USB 串口没回来"
+    assert win.port.currentData() == "/dev/ttyACM0", "过滤切换后把选中的臂弄丢了"
+
+
+def test_selection_survives_a_refresh(win, monkeypatch):
+    """手选过某台设备后，刷新**不许**把选择弄丢。
+
+    ⚠ 回选按 `currentData()`（设备路径）而不是显示文字：标签里带 ★ 与 VID:PID，
+    按文字比对一旦臂插拔后 ID 变了，就会**静默丢选**、退回第一条。
+    """
+    import serial.tools.list_ports as lp
+    import litearm_core
+
+    monkeypatch.setattr(lp, "comports", lambda: list(_LAYOUT))
+    monkeypatch.setattr(litearm_core, "find_cdc_port", lambda: "/dev/ttyACM0")
+
+    win._refresh_ports()                                # noqa: SLF001
+    win.port.setCurrentIndex(win.port.findData("/dev/ttyACM1"))
+    win._refresh_ports()                                # noqa: SLF001
+    assert win.port.currentData() == "/dev/ttyACM1", "刷新把操作者手选的端口弄丢了"
+
+
 def test_card_view_renders_untested_with_reasons(qapp):
     """**未实测必须带理由**显示 —— 界面上"未实测"与"得了 0 分"长得一样的话，
     三条硬规矩的第一条就白写了。"""

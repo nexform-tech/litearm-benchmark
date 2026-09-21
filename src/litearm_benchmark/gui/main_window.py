@@ -13,13 +13,14 @@ import glob
 import json
 import os
 import time
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel,
-    QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
-    QSplitter, QTabWidget, QVBoxLayout, QWidget,
+    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout,
+    QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPlainTextEdit,
+    QPushButton, QSplitter, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from .. import __version__
@@ -33,22 +34,60 @@ from .worker import Worker
 DOCS = "docs"
 
 
-def _list_ports() -> List[str]:
-    out: List[str] = []
+@dataclass(frozen=True)
+class PortInfo:
+    """一条串口 —— 设备路径、给人看的标签、以及"它是不是咱家的臂"。"""
+    device: str
+    label: str
+    is_arm: bool
+    is_usb: bool
+
+
+def _list_ports() -> List[PortInfo]:
+    """列出串口，并**认出自家那台臂**，排到最前、打上 ★。
+
+    ⚠ 认设备一律走 `litearm_core.find_cdc_port()` —— **公开面**。本工程**不复制**那对
+    VID:PID（它是 `litearm_core/transport.py` 的私有常数）：复制一份的话，固件那边
+    改了 PID，这里会**继续按老 ID 认**，症状是"界面说没识别到，可臂明明插着"。
+    家族规矩：**一律按 VID:PID 认设备**，`ttyACM0/1` 的编号会互换（本机 `ttyACM1`
+    就是台 ATK CMSIS-DAP 调试器，不是臂）。
+
+    ⚠ 早先这里写的是 `if p not in out: out.insert(0, p)` —— **恒假**：pyserial 自己就会
+    列出 CDC 口（本机第 32 位，前面 31 个全是 `/dev/ttyS*`），于是"插到最前"被自己的
+    守卫挡掉，下拉默认选中 `/dev/ttyS4`。
+
+    ⚠ 非 USB 串口（`/dev/ttyS*`）**留在这里**、由界面按需过滤，不在本函数里消失 ——
+    取数据的函数不该替调用方决定"什么算噪声"。
+    """
+    arm: Optional[str] = None
+    try:
+        from litearm_core import find_cdc_port
+        arm = find_cdc_port()
+    except Exception:                                     # noqa: BLE001
+        pass                                                  # 认不出就只是没有 ★
+
+    infos: List[PortInfo] = []
     try:
         import serial.tools.list_ports as lp
         for p in lp.comports():
-            out.append(p.device)
+            is_arm = arm is not None and p.device == arm
+            bits = ["LiteArm"] if is_arm else []
+            if p.vid is not None:
+                bits.append(f"{p.vid:04x}:{p.pid:04x}")
+            if p.product:
+                bits.append(p.product)
+            label = ("★ " if is_arm else "") + p.device \
+                + ("　" + "　".join(bits) if bits else "")
+            infos.append(PortInfo(p.device, label, is_arm, p.vid is not None))
     except Exception:                                     # noqa: BLE001
         pass
-    try:
-        from litearm_core import find_cdc_port
-        p = find_cdc_port()
-        if p and p not in out:
-            out.insert(0, p)
-    except Exception:                                     # noqa: BLE001
-        pass
-    return out
+
+    # 认出来了、pyserial 却没列（罕见）⇒ 补一条，否则界面上**根本选不到**它
+    if arm and not any(i.device == arm for i in infos):
+        infos.append(PortInfo(arm, f"★ {arm}　LiteArm", True, True))
+
+    infos.sort(key=lambda i: not i.is_arm)                # 稳定排序 ⇒ 臂第一，其余保原序
+    return infos
 
 
 class ConfirmRun(QDialog):
@@ -109,13 +148,18 @@ class MainWindow(QMainWindow):
         bar = QHBoxLayout()
         bar.addWidget(QLabel("端口"))
         self.port = QComboBox()
-        self.port.setMinimumWidth(220)
+        self.port.setMinimumWidth(320)
         bar.addWidget(self.port)
         self.btn_refresh = QPushButton("刷新")
         self.btn_conn = QPushButton("连接")
         self.btn_conn.setCheckable(True)
         bar.addWidget(self.btn_refresh)
         bar.addWidget(self.btn_conn)
+        #: ⚠ 默认**隐藏非 USB 串口**：`/dev/ttyS*` 是主板串口，物理上不可能是这台臂，
+        #:   本机 34 个里 31 个都是它们 ⇒ 藏起来，别让操作者在噪声里找。这是**过滤**、
+        #:   不是删除：勾上就回来，认设备的判据本身也从不依赖它。
+        self.chk_all = QCheckBox("显示非 USB 串口")
+        bar.addWidget(self.chk_all)
         bar.addStretch(1)
         self.lbl_note = QLabel("")
         bar.addWidget(self.lbl_note)
@@ -223,6 +267,7 @@ class MainWindow(QMainWindow):
         b.sig_prompt.connect(self._on_prompt)
 
         self.btn_refresh.clicked.connect(self._refresh_ports)
+        self.chk_all.toggled.connect(self._refresh_ports)
         self.btn_conn.clicked.connect(self._toggle_connect)
         self.btn_run_tier.clicked.connect(self._run_tier)
         self.btn_run_single.clicked.connect(self._run_single)
@@ -239,17 +284,32 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ #
     def _refresh_ports(self) -> None:
-        cur = self.port.currentText()
+        # ⚠ 记住的是**设备路径**（`currentData`）而不是显示文字：标签里带 ★ 和
+        #   VID:PID，一旦那台臂插拔后 ID 变了，按文字回选就会**静默丢选**。
+        cur = self.port.currentData()
         self.port.clear()
-        ports = _list_ports()
-        self.port.addItems(ports)
-        if cur and cur in ports:
-            self.port.setCurrentText(cur)
-        self.lbl_note.setText(f"发现 {len(ports)} 个串口" if ports else "没有发现串口")
+        infos = _list_ports()
+        shown = infos if self.chk_all.isChecked() else \
+            [i for i in infos if i.is_arm or i.is_usb]
+        for i in shown:
+            self.port.addItem(i.label, i.device)
+        if cur:
+            idx = self.port.findData(cur)
+            if idx >= 0:
+                self.port.setCurrentIndex(idx)
+
+        arm = next((i for i in infos if i.is_arm), None)
+        if arm is not None:
+            self.lbl_note.setText(f"已识别 LiteArm：<b>{arm.device}</b>")
+        elif not infos:
+            self.lbl_note.setText("没有发现串口")
+        else:
+            self.lbl_note.setText(
+                f"<b>未识别到 LiteArm</b>（已列出 {len(shown)} 个串口，可手动选）")
 
     def _toggle_connect(self, on: bool) -> None:
         if on:
-            self.worker.op_set_port(self.port.currentText() or None)
+            self.worker.op_set_port(self.port.currentData() or None)
             self.btn_conn.setText("断开")
         else:
             self.worker.op_set_port(None)
