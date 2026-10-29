@@ -27,6 +27,17 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # litearm-core is a private sibling repository and is not on PyPI.
+      # It is mirrored at nexform-tech/litearm-core; CORE_TOKEN is a
+      # fine-grained token with read-only Contents access to that mirror.
+      # Bump the pinned commit when the mirror advances.
+      - name: Install litearm-core
+        env:
+          CORE_TOKEN: ${{ secrets.LITEARM_CORE_TOKEN }}
+        run: |
+          git config --global url."https://x-access-token:${CORE_TOKEN}@github.com/nexform-tech/litearm-core".insteadOf "https://github.com/nexform-tech/litearm-core"
+          pip install "litearm-core @ git+https://github.com/nexform-tech/litearm-core.git@a45683855f83cecb13593cb590ac4c20b1622de8"
+
       - name: Install
         run: pip install -e ".[dev]"
 
