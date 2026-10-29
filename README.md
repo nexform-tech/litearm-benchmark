@@ -1,6 +1,6 @@
-# litearm-benchmark
-
 Benchmark and torque-estimation accuracy evaluation tools for the LiteArm robotic manipulator series.
+
+# litearm-benchmark
 
 ## Scope
 
