@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   release:
-    uses: nexform-tech/nexform-skills/.github/workflows/release.yml@v0
+    uses: nexform-tech/workflows/.github/workflows/release.yml@v1
     # Uncomment to keep semantic-release's 1.0.0 first release instead of the
     # bootstrapped 0.x line.
     # with:
