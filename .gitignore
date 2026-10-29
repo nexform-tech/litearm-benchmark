@@ -6,3 +6,6 @@ dist/
 .pytest_cache/
 .ruff_cache/
 .venv/
+
+# 基准运行产物（原始数据 + 报告）—— 数据很大，按需单独归档，不进主仓
+docs/bench_*/

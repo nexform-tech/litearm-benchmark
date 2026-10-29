@@ -9,14 +9,38 @@ description = "Benchmark and torque-estimation accuracy evaluation tools for the
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
-dependencies = []
+authors = [{ name = "luochun" }]
+keywords = ["robotics", "robot-arm", "litearm", "benchmark", "metrology"]
+dependencies = [
+    # ⚠ 兄弟工程声明本家族依赖的先例是「名称 + `>=` 下限」，**不用 path/URL/editable-spec**
+    #   （见 `litearm-server/pyproject.toml`）。版本下限与 litearm-core 的
+    #   `pyproject.toml` / `__init__.py` 对齐。
+    "litearm-core>=2.1.0",
+    # numpy 只用于**分析**（差分/谱/统计/插值）。litearm-core 刻意不依赖它 —— 那是 SDK 的
+    # 取舍（重活全在固件里）；本工程是 PC 侧离线分析器，向量化是刚需，显式声明别靠传递依赖捡。
+    "numpy>=1.21",
+]
 
 [project.optional-dependencies]
-test = ["pytest>=7"]
+dev = ["pytest>=7"]
+#: 界面是**可选**的：`litearm_benchmark.gui` 里的 PyQt5 都是**懒加载**（在函数体内 import），
+#: 不装它命令行与库用法完全不受影响。版本下限对齐兄弟工程 `litearm-tool-stm32`。
+gui = ["PyQt5>=5.15", "pyserial>=3.5"]
+
+[project.scripts]
+litearm-bench = "litearm_benchmark.cli:main"
+litearm-bench-gui = "litearm_benchmark.gui.app:main"
+
+[tool.setuptools]
+include-package-data = false
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+litearm_benchmark = ["py.typed"]
+
 [tool.pytest.ini_options]
-pythonpath = ["src"]
 testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-v"

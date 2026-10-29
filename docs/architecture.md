@@ -12,17 +12,17 @@ firmware remains the source of the motion and torque estimates.
 
 | Component | Responsibility | Depends on |
 |---|---|---|
-| Acquisition | Read joint position, velocity, and torque at up to 100 Hz | `litearm-python` |
-| Dynamics | Compute inverse-dynamics torque from the arm model | Arm model parameters / URDF |
+| Acquisition | Read joint position, velocity, and torque at up to 100 Hz | `litearm-core` over USB CDC |
+| Dynamics | Compute inverse-dynamics torque from the arm model | Firmware body and joint model (`get_body`, `get_jm`) |
 | Analysis | Compare measured and modelled torque, compute error metrics | NumPy |
-| Reporting | Plot time series and error distributions | Matplotlib |
+| Reporting | Write metrics, time series, figures, and the Markdown report | Standard library (SVG figures) |
 
 ## Data flow
 
 1. Acquire joint states and current-loop torque into a timestamped dataset.
 2. Derive acceleration from velocity (filtered) or from the commanded trajectory.
 3. Compute inverse-dynamics torque for each sample.
-4. Compare without and plot per-joint error metrics.
+4. Compare measured and modelled torque and plot per-joint error metrics.
 
 ## Boundaries
 

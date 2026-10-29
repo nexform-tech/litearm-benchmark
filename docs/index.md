@@ -15,4 +15,7 @@ evaluation toolkit for the LiteArm robotic manipulator series.
 
 ## Reference
 
+- [Metrics](METRICS.md): metric definitions, provenance, and scoring anchors.
+- [Repeatability](REPEATABILITY.md): repeated-run variance on the bench.
+- [Six-hour soak report](SOAK_20260921.md): endurance run results.
 - [Project README](../README.md)

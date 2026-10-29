@@ -1,0 +1,894 @@
+{
+ "config": {
+  "hours": 6.0,
+  "tier": "full",
+  "port": "/dev/ttyACM0",
+  "max_rounds": 400,
+  "outdir": null
+ },
+ "stop_reason": "",
+ "rounds": [
+  {
+   "round": 1,
+   "ok": true,
+   "seconds": 250.3,
+   "total": 80.37615237806311,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0677377350628376
+  },
+  {
+   "round": 2,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.63057796017335,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 3,
+   "ok": true,
+   "seconds": 250.8,
+   "total": 79.36697336612808,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 4,
+   "ok": true,
+   "seconds": 250.0,
+   "total": 79.13457367740517,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 5,
+   "ok": true,
+   "seconds": 251.2,
+   "total": 79.87179946178384,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 6,
+   "ok": true,
+   "seconds": 251.1,
+   "total": 80.3133051068591,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0658303864300251
+  },
+  {
+   "round": 7,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 80.07205156839426,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 8,
+   "ok": true,
+   "seconds": 250.7,
+   "total": 79.2866366178557,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0658303864300251
+  },
+  {
+   "round": 9,
+   "ok": true,
+   "seconds": 250.0,
+   "total": 79.89348887953626,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 10,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.95510563690932,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 11,
+   "ok": true,
+   "seconds": 249.6,
+   "total": 79.97669568696192,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 12,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 80.34966653593548,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 13,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.78277358468934,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 14,
+   "ok": true,
+   "seconds": 250.1,
+   "total": 79.32714149079426,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 15,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.74021378020205,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 16,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.7558087225023,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 17,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 80.48835362188001,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 18,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 80.02824074196562,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 19,
+   "ok": true,
+   "seconds": 249.6,
+   "total": 80.15025619898397,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 20,
+   "ok": true,
+   "seconds": 250.0,
+   "total": 80.01525303745476,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 21,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 79.92689429178145,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 22,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 80.20008073044646,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 23,
+   "ok": true,
+   "seconds": 250.0,
+   "total": 80.58738024699569,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 24,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 80.39833584517262,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 25,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.94431126794417,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 26,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 80.38610552563014,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 27,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 80.2074219637372,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 28,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 80.29613483605321,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 29,
+   "ok": true,
+   "seconds": 250.1,
+   "total": 80.18786034490914,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 30,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.76073106221286,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 31,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.31829932449544,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 32,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 78.68169089246955,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 33,
+   "ok": true,
+   "seconds": 249.6,
+   "total": 80.17855988683603,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 34,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 80.7339166890191,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 35,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.54169302763887,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 36,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.57241857600081,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 37,
+   "ok": true,
+   "seconds": 249.6,
+   "total": 80.21763380878545,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 38,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.46202125193861,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 39,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.87679822404652,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 40,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 79.56390258045857,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 41,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.61053345385716,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 42,
+   "ok": true,
+   "seconds": 250.1,
+   "total": 80.13128195692376,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 43,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 79.06922533075225,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 44,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.78447354773304,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 45,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.41382558406035,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 46,
+   "ok": true,
+   "seconds": 249.5,
+   "total": 79.48645058533228,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 47,
+   "ok": true,
+   "seconds": 249.5,
+   "total": 80.31738675864048,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 48,
+   "ok": true,
+   "seconds": 249.6,
+   "total": 79.52080170939696,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 49,
+   "ok": true,
+   "seconds": 249.5,
+   "total": 80.08485120182213,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 50,
+   "ok": false,
+   "seconds": 109.5,
+   "error": "LiteArmError('收到 0x4E (笛卡尔规划应答) 但队列为空 —— 应答比请求多, 固件与主机已错配 (已计数 extra_replies=1); 这不是可以忽略的噪声')",
+   "trace": "..\n        cap=cap)\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 305, in _request_and_get\n    fr = fetch(min(cap, max(_MIN_FETCH_S, remaining)))\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 1087, in <lambda>\n    fetch=pump if pump is not None else (lambda dt: self._read_one(dt, want)),\n                                                    ~~~~~~~~~~~~~~^^^^^^^^^^\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 1062, in _read_one\n    self._cart.on_reply(fr[1])\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^\n  File \"/home/llx/litearm-core/src/litearm_core/cart.py\", line 556, in on_reply\n    raise LiteArmError(\n    ...<2 lines>...\n        f\"这不是可以忽略的噪声\")\nlitearm_core.errors.LiteArmError: 收到 0x4E (笛卡尔规划应答) 但队列为空 —— 应答比请求多, 固件与主机已错配 (已计数 extra_replies=1); 这不是可以忽略的噪声\n",
+   "t_mos_max": 34.0
+  },
+  {
+   "round": 51,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 80.11704453207496,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 52,
+   "ok": false,
+   "seconds": 116.0,
+   "error": "LiteArmError('收到 0x4E (笛卡尔规划应答) 但队列为空 —— 应答比请求多, 固件与主机已错配 (已计数 extra_replies=1); 这不是可以忽略的噪声')",
+   "trace": "..\n        cap=cap)\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 305, in _request_and_get\n    fr = fetch(min(cap, max(_MIN_FETCH_S, remaining)))\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 1087, in <lambda>\n    fetch=pump if pump is not None else (lambda dt: self._read_one(dt, want)),\n                                                    ~~~~~~~~~~~~~~^^^^^^^^^^\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 1062, in _read_one\n    self._cart.on_reply(fr[1])\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^\n  File \"/home/llx/litearm-core/src/litearm_core/cart.py\", line 556, in on_reply\n    raise LiteArmError(\n    ...<2 lines>...\n        f\"这不是可以忽略的噪声\")\nlitearm_core.errors.LiteArmError: 收到 0x4E (笛卡尔规划应答) 但队列为空 —— 应答比请求多, 固件与主机已错配 (已计数 extra_replies=1); 这不是可以忽略的噪声\n",
+   "t_mos_max": 34.0
+  },
+  {
+   "round": 53,
+   "ok": true,
+   "seconds": 249.6,
+   "total": 80.40256322209473,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 54,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 80.35762471006716,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0677377350628376
+  },
+  {
+   "round": 55,
+   "ok": true,
+   "seconds": 249.5,
+   "total": 79.43334613466351,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 56,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.66069061845836,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 57,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.54382225038847,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 58,
+   "ok": true,
+   "seconds": 249.6,
+   "total": 79.56479707188805,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 59,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.94673382903532,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 60,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.68888044532753,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 61,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 80.02666721066817,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 62,
+   "ok": true,
+   "seconds": 249.6,
+   "total": 79.4236750099942,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 63,
+   "ok": false,
+   "seconds": 116.0,
+   "error": "LiteArmError('收到 0x4E (笛卡尔规划应答) 但队列为空 —— 应答比请求多, 固件与主机已错配 (已计数 extra_replies=1); 这不是可以忽略的噪声')",
+   "trace": "..\n        cap=cap)\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 305, in _request_and_get\n    fr = fetch(min(cap, max(_MIN_FETCH_S, remaining)))\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 1087, in <lambda>\n    fetch=pump if pump is not None else (lambda dt: self._read_one(dt, want)),\n                                                    ~~~~~~~~~~~~~~^^^^^^^^^^\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 1062, in _read_one\n    self._cart.on_reply(fr[1])\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^\n  File \"/home/llx/litearm-core/src/litearm_core/cart.py\", line 556, in on_reply\n    raise LiteArmError(\n    ...<2 lines>...\n        f\"这不是可以忽略的噪声\")\nlitearm_core.errors.LiteArmError: 收到 0x4E (笛卡尔规划应答) 但队列为空 —— 应答比请求多, 固件与主机已错配 (已计数 extra_replies=1); 这不是可以忽略的噪声\n",
+   "t_mos_max": 34.0
+  },
+  {
+   "round": 64,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 80.01270230867662,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 65,
+   "ok": true,
+   "seconds": 249.5,
+   "total": 79.6700385597864,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 66,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.55873960288542,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 67,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 79.72819632476369,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 68,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 80.02805668169813,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0658303864300251
+  },
+  {
+   "round": 69,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 79.97900843847339,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 70,
+   "ok": true,
+   "seconds": 249.5,
+   "total": 79.99832468920802,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 71,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 80.93654625007166,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 72,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 80.48420019151457,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 73,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.64964335670808,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 74,
+   "ok": true,
+   "seconds": 249.6,
+   "total": 80.64770471322261,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 75,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 80.05691390877769,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 76,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 80.13790079418015,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 77,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.65007874817987,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 78,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.95263532777132,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 79,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.91171062631709,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 80,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 79.9047536800292,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 81,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.52172632445175,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 82,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 78.99811002845841,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 83,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 79.34403411740284,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 84,
+   "ok": true,
+   "seconds": 249.9,
+   "total": 79.29270744357389,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0658303864300251
+  },
+  {
+   "round": 85,
+   "ok": true,
+   "seconds": 249.8,
+   "total": 80.44518284250839,
+   "grade": "A",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 86,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.41851636099776,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 87,
+   "ok": true,
+   "seconds": 250.0,
+   "total": 79.81109947147783,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  },
+  {
+   "round": 88,
+   "ok": false,
+   "seconds": 115.9,
+   "error": "LiteArmError('收到 0x4E (笛卡尔规划应答) 但队列为空 —— 应答比请求多, 固件与主机已错配 (已计数 extra_replies=1); 这不是可以忽略的噪声')",
+   "trace": "..\n        cap=cap)\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 305, in _request_and_get\n    fr = fetch(min(cap, max(_MIN_FETCH_S, remaining)))\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 1087, in <lambda>\n    fetch=pump if pump is not None else (lambda dt: self._read_one(dt, want)),\n                                                    ~~~~~~~~~~~~~~^^^^^^^^^^\n  File \"/home/llx/litearm-core/src/litearm_core/arm.py\", line 1062, in _read_one\n    self._cart.on_reply(fr[1])\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^\n  File \"/home/llx/litearm-core/src/litearm_core/cart.py\", line 556, in on_reply\n    raise LiteArmError(\n    ...<2 lines>...\n        f\"这不是可以忽略的噪声\")\nlitearm_core.errors.LiteArmError: 收到 0x4E (笛卡尔规划应答) 但队列为空 —— 应答比请求多, 固件与主机已错配 (已计数 extra_replies=1); 这不是可以忽略的噪声\n",
+   "t_mos_max": 34.0
+  },
+  {
+   "round": 89,
+   "ok": true,
+   "seconds": 249.7,
+   "total": 79.8107570993239,
+   "grade": "B",
+   "unmeasured": 2,
+   "t_mos_max": 34.0,
+   "margin": 0.0654489167034626
+  }
+ ]
+}
