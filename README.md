@@ -14,7 +14,8 @@ attribution — from one command.
 - Inverse-dynamics torque from the firmware's online rigid-body model (RNEA).
 - Per-joint error metrics (RMSE / MAE / bias / peak / R² / correlation), plots,
   delay scan, and evidence-ranked error-source diagnosis.
-- Three excitation scenarios: static hold, sine sweep, and slow multi-pose moves.
+- Three excitation scenarios: static hold, fixed-frequency sine, and slow
+  multi-pose moves.
 
 The tool output (CLI text, report, figures) is in Chinese. This README and the
 `docs/` pages are in English.
@@ -73,13 +74,13 @@ Useful flags:
 
 - **hold** — static hold (~3 s) at the current pose. Isolates gravity model and
   current-loop zero offset; `ddq = dq = 0`, so the residual is a static bias.
-- **sine** — continuous servo sine (~10 s, 0.2 Hz) with a commanded rate of
-  50 Hz. Excites inertia, Coriolis, and friction terms; amplitude is
-  automatically reduced so every selected joint keeps a 0.15 rad soft-limit
-  margin.
-- **poses** — slow multi-pose sequence (four target poses, 1.2 s dwell) with
-  automatic amplitude narrowing. Exposes direction-dependent friction and
-  gravity error at different configurations.
+- **sine** — continuous fixed-frequency servo sine (~10 s, 0.2 Hz) with a
+  commanded rate of 50 Hz. Excites inertia, Coriolis, and friction terms;
+  amplitude is automatically reduced so every selected joint keeps a 0.15 rad
+  soft-limit margin.
+- **poses** — slow multi-pose sequence (two offset poses plus a return to the
+  starting pose, 1.2 s dwell) with automatic amplitude narrowing. Exposes
+  direction-dependent friction and gravity error at different configurations.
 
 Every planned target passes a soft-limit margin check before anything moves.
 

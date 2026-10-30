@@ -3,7 +3,8 @@
 
 子命令:
     run       默认。连接真机, 跑 hold/sine/poses 三个场景, 逐个分析出图出报告。
-    collect   只采集一个场景 (仍会分析, 除非 --no-analyze)。
+    collect   采集场景 (默认 all; 多场景各写一个子目录; 仍会分析, 除非
+              --no-analyze)。
     analyze   对已有会话目录 (或包含多个会话的 run 目录) 做离线分析。
 
 安全约定: 默认只读打印计划; 任何 enable/运动/采集都要 `--go`。
@@ -20,7 +21,7 @@ from typing import List, Optional, Sequence, Tuple
 
 from .analyze import AnalyzeOptions, analyze_dir
 from .collect import (MIN_MARGIN, ScenarioSpec, fetch_from_arm,
-                      read_joint_limits, run_scenario)
+                      read_joint_limits, run_scenario, validate_scenario)
 from .plots import generate_all
 from .report import write_report
 
@@ -263,18 +264,21 @@ def _print_summary(result) -> None:
         print(f"     → {d['source']}: {d['evidence']}")
 
 
-def _write_overview(run_dir: str, results: Sequence) -> str:
+def _write_overview(run_dir: str, entries: Sequence[Tuple[object, str]],
+                    no_report: bool = False) -> str:
+    """写多场景总览; `entries` 是 (分析结果, 相对 run_dir 的子目录) 列表。"""
     lines = [f"# tau_eval 运行总览 — {os.path.basename(run_dir)}", ""]
     lines.append("| 场景 | 样本 | 平均 RMSE (N·m) | 最大 RMSE | 最差轴 | 平均 \\|bias\\| | 报告 |")
     lines.append("|---|---|---|---|---|---|---|")
-    for r in results:
+    for r, sub in entries:
         s = r.summary
         agg = s["metrics"]["raw"]["aggregate"]
-        sub = s.get("scenario") or ""
+        scenario = s.get("scenario") or sub
+        report = "—" if no_report else f"[report]({sub}/report.md)"
         lines.append(
-            f"| {sub} | {s['n_samples']} | {agg['mean_rmse']:.4f} | "
+            f"| {scenario} | {s['n_samples']} | {agg['mean_rmse']:.4f} | "
             f"{agg['max_rmse']:.4f} | {agg['worst_joint']} | "
-            f"{agg['mean_abs_bias']:.4f} | [report]({sub}/report.md) |")
+            f"{agg['mean_abs_bias']:.4f} | {report} |")
     lines.append("")
     lines.append("图与逐轴指标在各场景子目录: `metrics.json` / `timeseries.csv` / "
                  "`figures/*.svg`。")
@@ -315,6 +319,8 @@ def cmd_run(args, argv: Sequence[str]) -> int:
             return 2
         limits = read_joint_limits(arm)
         specs = _make_specs(arm, args, limits)
+        for spec in specs:
+            validate_scenario(spec, limits)
         _print_plan(arm, specs)
         if not args.go:
             print("\n只读模式: 加 --go 才会 enable/运动/采集。")
@@ -338,20 +344,22 @@ def cmd_run(args, argv: Sequence[str]) -> int:
 
     opts = _analyze_options(args)
     cmd = _command_line(argv)
-    results = []
+    entries = []
     print("\n[分析]")
     for spec, d in session_dirs:
-        results.append(_analyze_one(d, d, opts, cmd, args.no_plot, args.no_report))
-        _print_summary(results[-1])
-    if results:
-        ov = _write_overview(root, results)
+        result = _analyze_one(d, d, opts, cmd, args.no_plot, args.no_report)
+        entries.append((result, os.path.relpath(d, root)))
+        _print_summary(result)
+    if entries:
+        ov = _write_overview(root, entries, no_report=args.no_report)
         print(f"\n[完成] 总览 {ov}")
     return 0
 
 
 def cmd_collect(args, argv: Sequence[str]) -> int:
     arm = _connect(args)
-    session_dir = None
+    session_root = None
+    session_dirs: List[Tuple[ScenarioSpec, str]] = []
     try:
         st = arm.get_state().value
         if st is not None and st.faulted:
@@ -359,25 +367,38 @@ def cmd_collect(args, argv: Sequence[str]) -> int:
             return 2
         limits = read_joint_limits(arm)
         specs = _make_specs(arm, args, limits)
+        for spec in specs:
+            validate_scenario(spec, limits)
         _print_plan(arm, specs)
         if not args.go:
             print("\n只读模式: 加 --go 才会 enable/运动/采集。")
             return 0
-        session_dir = _timestamp_dir(args.outdir)
-        print(f"[输出] {session_dir}")
+        session_root = _timestamp_dir(args.outdir)
+        print(f"[输出] {session_root}")
         snapshot = fetch_from_arm(arm)
+        multi = len(specs) > 1
         for k, spec in enumerate(specs, 1):
-            run_scenario(arm, spec, session_dir, fs=args.fs, go=True,
+            outdir = (os.path.join(session_root, f"{k:02d}_{spec.kind}")
+                      if multi else session_root)
+            run_scenario(arm, spec, outdir, fs=args.fs, go=True,
                          ambient_c=args.ambient_c, snapshot=snapshot,
                          parquet=args.parquet)
+            session_dirs.append((spec, outdir))
     finally:
         arm.close()
         print("[断开] 已关闭串口 (刻意未 disable: 失能会因自重坠回)")
 
-    if session_dir and not args.no_analyze:
-        result = _analyze_one(session_dir, session_dir, _analyze_options(args),
-                              _command_line(argv), args.no_plot, args.no_report)
-        _print_summary(result)
+    if session_root and not args.no_analyze:
+        entries = []
+        for spec, d in session_dirs:
+            result = _analyze_one(d, d, _analyze_options(args),
+                                  _command_line(argv), args.no_plot,
+                                  args.no_report)
+            entries.append((result, os.path.relpath(d, session_root)))
+            _print_summary(result)
+        if len(entries) > 1:
+            ov = _write_overview(session_root, entries, no_report=args.no_report)
+            print(f"\n[完成] 总览 {ov}")
     return 0
 
 
@@ -400,14 +421,15 @@ def cmd_analyze(args, argv: Sequence[str]) -> int:
         return 2
     opts = _analyze_options(args)
     cmd = _command_line(argv)
-    results = []
+    base = os.path.dirname(dirs[0])
+    entries = []
     for d in dirs:
         out = os.path.join(args.outdir, os.path.basename(d)) if args.outdir else d
         result = _analyze_one(d, out, opts, cmd, args.no_plot, args.no_report)
-        results.append(result)
+        entries.append((result, os.path.relpath(out, base)))
         _print_summary(result)
-    if len(results) > 1 and args.outdir is None:
-        _write_overview(os.path.dirname(dirs[0]), results)
+    if len(entries) > 1 and args.outdir is None:
+        _write_overview(base, entries, no_report=args.no_report)
     return 0
 
 

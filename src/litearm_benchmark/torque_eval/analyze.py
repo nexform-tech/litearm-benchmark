@@ -427,6 +427,13 @@ def diagnose(result: AnalysisResult, summary: Dict[str, object]) -> List[Dict[st
 def analyze_session(session: Session, snapshot: ModelSnapshot,
                     options: Optional[AnalyzeOptions] = None) -> AnalysisResult:
     opts = options or AnalyzeOptions()
+    for name, v in (("cutoff_dq", opts.cutoff_dq), ("cutoff_ddq", opts.cutoff_ddq),
+                    ("cutoff_tau", opts.cutoff_tau)):
+        if not math.isfinite(v) or v < 0.0:
+            raise ValueError(f"{name} 必须是有限非负数 (0 = 不滤波), 收到 {v!r}")
+    if opts.trim_s is not None and (not math.isfinite(opts.trim_s)
+                                    or opts.trim_s < 0.0):
+        raise ValueError(f"trim_s 必须是有限非负数, 收到 {opts.trim_s!r}")
     if snapshot.joint_count != N_JOINT:
         raise ValueError(f"模型关节数 {snapshot.joint_count} != {N_JOINT}")
 
@@ -478,7 +485,7 @@ def analyze_session(session: Session, snapshot: ModelSnapshot,
     # 边沿裁剪: filtfilt 的反射瞬态约 2/fc 秒
     trim = opts.trim_s
     if trim is None:
-        trim = max(2.0 / cutoff_ddq, 0.1)
+        trim = max(2.0 / cutoff_ddq, 0.1) if cutoff_ddq > 0.0 else 0.1
     trim = min(trim, 0.2 * t[-1]) if t[-1] > 0 else 0.0
     i0 = int(math.ceil(trim * fs))
     i1 = n_s - i0

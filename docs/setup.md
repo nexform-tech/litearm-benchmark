@@ -34,7 +34,7 @@ The project is a pure-Python package; `pip install -e` is the build step.
 pytest
 ```
 
-Expected result: 12 passed. The suite is offline and needs no hardware.
+Expected result: 23 passed. The suite is offline and needs no hardware.
 
 ## 4. Verify the command-line entries
 
@@ -48,7 +48,7 @@ non-zero status instead of a traceback. Offline analysis still works:
 
 ```bash
 litearm-tau analyze examples/reference_sine --outdir /tmp/tau_ref
-ls /tmp/tau_ref/figures | wc -l     # 33
+ls /tmp/tau_ref/reference_sine/figures | wc -l     # 33
 ```
 
 ## Troubleshooting

@@ -62,6 +62,13 @@ def write_report(result: AnalysisResult, figure_paths: Optional[Dict[str, str]] 
     lines.append(f"- 重力向量: {s['model'].get('gravity')} "
                  f"(台架若为 +Y 请用 `--gravity 0,9.81,0`)")
     lines.append(f"- payload: {s['model'].get('payload')}")
+    fm = s["model"].get("friction_model")
+    if fm is not None:
+        note = "" if fm == 1 else " ⚠ 非 v2 稳态模型, 摩擦项未纳入前向计算"
+        lines.append(f"- 摩擦模型: 固件 friction_model={fm}{note}")
+    warns = s["model"].get("read_warnings") or []
+    if warns:
+        lines.append("- ⚠ 模型读回警告: " + "; ".join(str(w) for w in warns))
     lines.append("")
 
     lines.append("## 结论摘要")

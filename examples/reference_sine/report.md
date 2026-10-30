@@ -5,6 +5,7 @@
 - 固件: `synthetic-example`; 几何指纹: `640bf04bf532e395`
 - 重力向量: [0.0, 0.0, -9.81] (台架若为 +Y 请用 `--gravity 0,9.81,0`)
 - payload: {'mass': 0.0, 'com': [0.0, 0.0, 0.0]}
+- 摩擦模型: 固件 friction_model=1
 
 ## 结论摘要
 

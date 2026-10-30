@@ -88,13 +88,13 @@ def lowpass_zero_phase(x: Sequence[float], fs: float, fc: float) -> List[float]:
     if n < 4 or not (fc > 0.0):
         return [float(v) for v in x]
     b, a = _butter2_coeffs(fs, fc)
-    pad = max(9, int(math.ceil(2.0 * fs / fc)))
+    # 实际 padding 会被 _reflect_pad 截到 n-1; 这里先钳住, 保证切片用同一个值。
+    pad = min(max(9, int(math.ceil(2.0 * fs / fc))), n - 1)
     y = _lfilter(b, a, _reflect_pad(x, pad))
     y.reverse()
     y = _lfilter(b, a, y)
     y.reverse()
-    core = y[pad:pad + n] if len(y) >= pad + n else y[:n]
-    return list(core)
+    return list(y[pad:pad + n])
 
 
 def central_diff(x: Sequence[float], dt: float) -> List[float]:

@@ -18,7 +18,7 @@
 激励场景 (issue 要求至少三类):
     hold   静态持位          —— 纯重力项, 校核 G(q)
     sine   低速正弦          —— 连续 q/dq 参考 (move_js ≥10Hz 重发), 激励惯性/摩擦
-    poses  多姿态慢速 movej  —— 大范围姿态变化, 激励重力随构型的变化
+    poses  多姿态慢速 move_js —— 大范围姿态变化, 激励重力随构型的变化
 
 安全:
     * 所有目标位形都按固件软限位检查, 余量不足 `MIN_MARGIN` 直接拒绝;
@@ -385,8 +385,9 @@ def validate_scenario(spec: ScenarioSpec, limits: Sequence[Tuple[float, float]],
         if spec.q_center is None:
             raise ValueError("hold 场景需要 q_center")
         _check_pose(spec.q_center, limits, "hold", margin)
-        if spec.duration <= 0:
-            raise ValueError("hold duration 必须 > 0")
+        if not (0.0 < spec.duration < math.inf):
+            raise ValueError(f"hold duration 必须是 (0, inf) 内的有限值, "
+                             f"收到 {spec.duration!r}")
         return {"kind": "hold", "duration": spec.duration}
 
     if spec.kind == "sine":
@@ -396,8 +397,12 @@ def validate_scenario(spec: ScenarioSpec, limits: Sequence[Tuple[float, float]],
             raise ValueError(f"sine amp 必须在 (0, {MAX_SINE_AMP}] rad")
         if not (0.0 < spec.freq <= MAX_SINE_FREQ):
             raise ValueError(f"sine freq 必须在 (0, {MAX_SINE_FREQ}] Hz")
-        if spec.duration <= 0:
-            raise ValueError("sine duration 必须 > 0")
+        if not (0.0 < spec.duration < math.inf):
+            raise ValueError(f"sine duration 必须是 (0, inf) 内的有限值, "
+                             f"收到 {spec.duration!r}")
+        for name, v in (("pre_roll", spec.pre_roll), ("post_roll", spec.post_roll)):
+            if not (0.0 <= v < math.inf):
+                raise ValueError(f"sine {name} 必须是非负有限值, 收到 {v!r}")
         if not (MIN_COMMAND_HZ <= spec.command_hz <= MAX_COMMAND_HZ):
             raise ValueError(f"command_hz 必须在 [{MIN_COMMAND_HZ}, {MAX_COMMAND_HZ}]")
         joints = list(spec.joints) if spec.joints is not None else list(range(n))
@@ -419,8 +424,11 @@ def validate_scenario(spec: ScenarioSpec, limits: Sequence[Tuple[float, float]],
     if spec.kind == "poses":
         if not spec.poses:
             raise ValueError("poses 场景需要 poses")
-        if spec.dwell < 0:
-            raise ValueError("poses dwell 不能为负")
+        if not (0.0 <= spec.dwell < math.inf):
+            raise ValueError(f"poses dwell 必须是非负有限值, 收到 {spec.dwell!r}")
+        for name, v in (("pre_roll", spec.pre_roll), ("post_roll", spec.post_roll)):
+            if not (0.0 <= v < math.inf):
+                raise ValueError(f"poses {name} 必须是非负有限值, 收到 {v!r}")
         if not (0.0 < spec.speed <= 1.0):
             raise ValueError("poses speed 必须在 (0, 1]")
         for k, p in enumerate(spec.poses):
@@ -693,15 +701,19 @@ def run_scenario(arm, spec: ScenarioSpec, outdir: str, fs: float = 100.0,
                  parquet: bool = False) -> Session:
     """执行一个场景并落盘 `status.csv` / `meta.json` / `model.json`。
 
-    `go=False` 时只做只读校验并抛 `RuntimeError` 前先返回计划? —— 不, 本函数只负责
-    真正执行; 规划/打印在 `cli.py`。`go` 只决定是否允许 enable。
+    本函数只负责真正执行; 规划和计划打印在 `cli.py`。`go=False` 一律拒绝 —— 不能
+    依赖"臂未使能"来兜底, 因为上一次运行或手动 enable 后遗留的使能状态会让这个
+    默认值变成真实运动。
     """
+    if not go:
+        raise RuntimeError("run_scenario 需要 go=True 才会 enable/运动/采集; "
+                           "只读规划请用 cli")
     if not (1.0 <= fs <= 100.0):
         raise ValueError("fs 必须在 [1, 100] Hz (固件状态流上限约 100Hz)")
 
     limits = read_joint_limits(arm)
     plan = validate_scenario(spec, limits)
-    ensure_enabled(arm, go)
+    ensure_enabled(arm, True)
 
     if snapshot is None:
         snapshot = fetch_from_arm(arm)
