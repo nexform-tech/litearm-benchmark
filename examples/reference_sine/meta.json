@@ -1,0 +1,6 @@
+{
+  "fs": 100.0,
+  "scenario": "synthetic-sine",
+  "sample_count": 201,
+  "t_span_s": 2.0
+}

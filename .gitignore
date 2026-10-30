@@ -6,3 +6,7 @@ dist/
 .pytest_cache/
 .ruff_cache/
 .venv/
+
+# evaluation output — regenerate, never commit
+runs/
+examples/synthetic_sine/

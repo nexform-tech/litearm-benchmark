@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="460" viewBox="0 0 900 460">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="450.0" y="24" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#111">关节 J7 · 残差分布</text>
+<rect x="78.0" y="52.0" width="798.0" height="350.0" fill="none" stroke="#333" stroke-width="1"/>
+<line x1="69.3" y1="52.0" x2="69.3" y2="402.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="69.3" y="418.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">-3.00e-07</text>
+<line x1="209.8" y1="52.0" x2="209.8" y2="402.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="209.8" y="418.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">-2.00e-07</text>
+<line x1="350.2" y1="52.0" x2="350.2" y2="402.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="350.2" y="418.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">-1.00e-07</text>
+<line x1="490.7" y1="52.0" x2="490.7" y2="402.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="490.7" y="418.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">0</text>
+<line x1="631.1" y1="52.0" x2="631.1" y2="402.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="631.1" y="418.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">1.00e-07</text>
+<line x1="771.5" y1="52.0" x2="771.5" y2="402.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="771.5" y="418.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">2.00e-07</text>
+<line x1="912.0" y1="52.0" x2="912.0" y2="402.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="912.0" y="418.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">3.00e-07</text>
+<line x1="78.0" y1="402.0" x2="876.0" y2="402.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="70.0" y="406.0" text-anchor="end" font-family="sans-serif" font-size="11" fill="#444">0</text>
+<line x1="78.0" y1="337.2" x2="876.0" y2="337.2" stroke="#e6e6e6" stroke-width="1"/>
+<text x="70.0" y="341.2" text-anchor="end" font-family="sans-serif" font-size="11" fill="#444">5.00</text>
+<line x1="78.0" y1="272.4" x2="876.0" y2="272.4" stroke="#e6e6e6" stroke-width="1"/>
+<text x="70.0" y="276.4" text-anchor="end" font-family="sans-serif" font-size="11" fill="#444">10.0</text>
+<line x1="78.0" y1="207.6" x2="876.0" y2="207.6" stroke="#e6e6e6" stroke-width="1"/>
+<text x="70.0" y="211.6" text-anchor="end" font-family="sans-serif" font-size="11" fill="#444">15.0</text>
+<line x1="78.0" y1="142.7" x2="876.0" y2="142.7" stroke="#e6e6e6" stroke-width="1"/>
+<text x="70.0" y="146.7" text-anchor="end" font-family="sans-serif" font-size="11" fill="#444">20.0</text>
+<line x1="78.0" y1="77.9" x2="876.0" y2="77.9" stroke="#e6e6e6" stroke-width="1"/>
+<text x="70.0" y="81.9" text-anchor="end" font-family="sans-serif" font-size="11" fill="#444">25.0</text>
+<text x="477.0" y="440.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#222">τ_meas − τ_model (N·m)</text>
+<text x="16" y="227.0" text-anchor="middle" transform="rotate(-90 16 227.0)" font-family="sans-serif" font-size="12" fill="#222">count</text>
+<rect x="78.00" y="77.9" width="25.60" height="324.1" fill="#1f77b4" opacity="0.8"/>
+<rect x="104.60" y="272.4" width="25.60" height="129.6" fill="#1f77b4" opacity="0.8"/>
+<rect x="131.20" y="337.2" width="25.60" height="64.8" fill="#1f77b4" opacity="0.8"/>
+<rect x="157.80" y="363.1" width="25.60" height="38.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="184.40" y="350.1" width="25.60" height="51.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="211.00" y="363.1" width="25.60" height="38.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="237.60" y="363.1" width="25.60" height="38.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="264.20" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="290.80" y="363.1" width="25.60" height="38.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="317.40" y="363.1" width="25.60" height="38.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="344.00" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="370.60" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="397.20" y="363.1" width="25.60" height="38.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="423.80" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="450.40" y="363.1" width="25.60" height="38.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="477.00" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="503.60" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="530.20" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="556.80" y="363.1" width="25.60" height="38.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="583.40" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="610.00" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="636.60" y="363.1" width="25.60" height="38.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="663.20" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="689.80" y="363.1" width="25.60" height="38.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="716.40" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="743.00" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="769.60" y="363.1" width="25.60" height="38.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="796.20" y="376.1" width="25.60" height="25.9" fill="#1f77b4" opacity="0.8"/>
+<rect x="822.80" y="324.2" width="25.60" height="77.8" fill="#1f77b4" opacity="0.8"/>
+<rect x="849.40" y="246.4" width="25.60" height="155.6" fill="#1f77b4" opacity="0.8"/>
+<line x1="490.7" y1="52.0" x2="490.7" y2="402.0" stroke="#d62728" stroke-width="1"/>
+</svg>

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="480.0" y="24" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#111">延迟扫描 · RMSE vs 实测时移</text>
+<rect x="78.0" y="52.0" width="858.0" height="410.0" fill="none" stroke="#333" stroke-width="1"/>
+<line x1="78.0" y1="52.0" x2="78.0" y2="462.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="78.0" y="478.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">-100.0</text>
+<line x1="292.5" y1="52.0" x2="292.5" y2="462.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="292.5" y="478.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">-50.0</text>
+<line x1="507.0" y1="52.0" x2="507.0" y2="462.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="507.0" y="478.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">0</text>
+<line x1="721.5" y1="52.0" x2="721.5" y2="462.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="721.5" y="478.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">50.0</text>
+<line x1="936.0" y1="52.0" x2="936.0" y2="462.0" stroke="#e6e6e6" stroke-width="1"/>
+<text x="936.0" y="478.0" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#444">100.0</text>
+<line x1="78.0" y1="443.4" x2="936.0" y2="443.4" stroke="#e6e6e6" stroke-width="1"/>
+<text x="70.0" y="447.4" text-anchor="end" font-family="sans-serif" font-size="11" fill="#444">0</text>
+<line x1="78.0" y1="312.3" x2="936.0" y2="312.3" stroke="#e6e6e6" stroke-width="1"/>
+<text x="70.0" y="316.3" text-anchor="end" font-family="sans-serif" font-size="11" fill="#444">0.050</text>
+<line x1="78.0" y1="181.2" x2="936.0" y2="181.2" stroke="#e6e6e6" stroke-width="1"/>
+<text x="70.0" y="185.2" text-anchor="end" font-family="sans-serif" font-size="11" fill="#444">0.100</text>
+<line x1="78.0" y1="50.2" x2="936.0" y2="50.2" stroke="#e6e6e6" stroke-width="1"/>
+<text x="70.0" y="54.2" text-anchor="end" font-family="sans-serif" font-size="11" fill="#444">0.150</text>
+<text x="507.0" y="500.0" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#222">lag (ms)</text>
+<text x="16" y="257.0" text-anchor="middle" transform="rotate(-90 16 257.0)" font-family="sans-serif" font-size="12" fill="#222">RMSE (N·m)</text>
+<line x1="78.0" y1="443.4" x2="936.0" y2="443.4" stroke="#999" stroke-width="1"/>
+<path d="M78.0,416.4 L120.9,419.0 L163.8,421.7 L206.7,424.4 L249.6,427.1 L292.5,429.8 L335.4,432.5 L378.3,435.2 L421.2,437.9 L464.1,440.6 L507.0,443.4 L549.9,440.6 L592.8,437.9 L635.7,435.2 L678.6,432.5 L721.5,429.8 L764.4,427.1 L807.3,424.4 L850.2,421.7 L893.1,419.0 L936.0,416.4" fill="none" stroke="#1f77b4" stroke-width="1.8"/>
+<path d="M78.0,70.6 L120.9,106.1 L163.8,141.9 L206.7,178.2 L249.6,214.9 L292.5,252.0 L335.4,289.5 L378.3,327.4 L421.2,365.6 L464.1,404.3 L507.0,443.4 L549.9,404.3 L592.8,365.6 L635.7,327.3 L678.6,289.4 L721.5,251.9 L764.4,214.8 L807.3,178.2 L850.2,141.9 L893.1,106.0 L936.0,70.6" fill="none" stroke="#d62728" stroke-width="1.8"/>
+<path d="M78.0,411.6 L120.9,414.7 L163.8,417.8 L206.7,420.9 L249.6,424.1 L292.5,427.3 L335.4,430.5 L378.3,433.7 L421.2,436.9 L464.1,440.1 L507.0,443.4 L549.9,440.1 L592.8,436.9 L635.7,433.7 L678.6,430.5 L721.5,427.3 L764.4,424.1 L807.3,421.0 L850.2,417.8 L893.1,414.7 L936.0,411.6" fill="none" stroke="#2ca02c" stroke-width="1.8"/>
+<path d="M78.0,316.9 L120.9,329.3 L163.8,341.8 L206.7,354.3 L249.6,366.9 L292.5,379.5 L335.4,392.2 L378.3,404.9 L421.2,417.7 L464.1,430.5 L507.0,443.4 L549.9,430.5 L592.8,417.7 L635.7,404.9 L678.6,392.2 L721.5,379.5 L764.4,366.9 L807.3,354.3 L850.2,341.8 L893.1,329.3 L936.0,316.9" fill="none" stroke="#ff7f0e" stroke-width="1.8"/>
+<path d="M78.0,439.7 L120.9,440.1 L163.8,440.5 L206.7,440.8 L249.6,441.2 L292.5,441.6 L335.4,441.9 L378.3,442.3 L421.2,442.7 L464.1,443.0 L507.0,443.4 L549.9,443.0 L592.8,442.7 L635.7,442.3 L678.6,441.9 L721.5,441.6 L764.4,441.2 L807.3,440.8 L850.2,440.5 L893.1,440.1 L936.0,439.7" fill="none" stroke="#9467bd" stroke-width="1.8"/>
+<path d="M78.0,405.5 L120.9,409.3 L163.8,413.2 L206.7,417.0 L249.6,420.8 L292.5,424.5 L335.4,428.3 L378.3,432.1 L421.2,435.9 L464.1,439.6 L507.0,443.4 L549.9,439.6 L592.8,435.9 L635.7,432.1 L678.6,428.3 L721.5,424.5 L764.4,420.8 L807.3,417.0 L850.2,413.2 L893.1,409.3 L936.0,405.5" fill="none" stroke="#8c564b" stroke-width="1.8"/>
+<path d="M78.0,441.4 L120.9,441.6 L163.8,441.8 L206.7,442.0 L249.6,442.2 L292.5,442.4 L335.4,442.6 L378.3,442.8 L421.2,443.0 L464.1,443.2 L507.0,443.4 L549.9,443.2 L592.8,443.0 L635.7,442.8 L678.6,442.6 L721.5,442.4 L764.4,442.2 L807.3,442.0 L850.2,441.8 L893.1,441.6 L936.0,441.4" fill="none" stroke="#17becf" stroke-width="1.8"/>
+<line x1="78.0" y1="40.0" x2="100.0" y2="40.0" stroke="#1f77b4" stroke-width="2"/>
+<text x="105.0" y="44.0" font-family="sans-serif" font-size="11" fill="#222">J1</text>
+<line x1="141.0" y1="40.0" x2="163.0" y2="40.0" stroke="#d62728" stroke-width="2"/>
+<text x="168.0" y="44.0" font-family="sans-serif" font-size="11" fill="#222">J2</text>
+<line x1="204.0" y1="40.0" x2="226.0" y2="40.0" stroke="#2ca02c" stroke-width="2"/>
+<text x="231.0" y="44.0" font-family="sans-serif" font-size="11" fill="#222">J3</text>
+<line x1="267.0" y1="40.0" x2="289.0" y2="40.0" stroke="#ff7f0e" stroke-width="2"/>
+<text x="294.0" y="44.0" font-family="sans-serif" font-size="11" fill="#222">J4</text>
+<line x1="330.0" y1="40.0" x2="352.0" y2="40.0" stroke="#9467bd" stroke-width="2"/>
+<text x="357.0" y="44.0" font-family="sans-serif" font-size="11" fill="#222">J5</text>
+<line x1="393.0" y1="40.0" x2="415.0" y2="40.0" stroke="#8c564b" stroke-width="2"/>
+<text x="420.0" y="44.0" font-family="sans-serif" font-size="11" fill="#222">J6</text>
+<line x1="456.0" y1="40.0" x2="478.0" y2="40.0" stroke="#17becf" stroke-width="2"/>
+<text x="483.0" y="44.0" font-family="sans-serif" font-size="11" fill="#222">J7</text>
+</svg>
